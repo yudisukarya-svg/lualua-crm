@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, ClipboardList, AlertTriangle, TrendingUp, Wand2, Activity, Printer, Truck } from "lucide-react";
+import { Plus, Pencil, Trash2, ClipboardList, AlertTriangle, TrendingUp, Wand2, Activity, Printer, Truck, Archive, ArchiveRestore } from "lucide-react";
 import { useSchedule } from "@/hooks/useSchedule";
-import { deleteSalesOrder, READINESS_ITEMS } from "@/hooks/useSalesOrders";
+import { deleteSalesOrder, archiveSalesOrder, unarchiveSalesOrder, READINESS_ITEMS } from "@/hooks/useSalesOrders";
 import { useShipments } from "@/hooks/useShipments";
 import { useActualProgress, overallActualPercent } from "@/hooks/useActualProgress";
 import { updateSettings } from "@/hooks/usePlanningCalendar";
@@ -45,6 +45,7 @@ export default function Planning() {
   const [dispatchDialog, setDispatchDialog] = useState({ open: false, order: null });
   const [readyDialog, setReadyDialog] = useState({ open: false, order: null });
   const [whyDialog, setWhyDialog] = useState({ open: false, order: null, issues: [] });
+  const [showArchived, setShowArchived] = useState(false);
   const { shipments, refetch: refetchShipments } = useShipments();
 
   const dispatchedQty = (soId) => shipments.filter((s) => s.sales_order_id === soId).reduce((n, s) => n + (Number(s.qty) || 0), 0);
@@ -66,7 +67,9 @@ export default function Planning() {
   const [whatIfResult, setWhatIfResult] = useState(null);
 
   const mode = raw?.settings?.priority_mode || "fifo";
-  const soRows = raw?.salesOrders ?? [];
+  const allSoRows = raw?.salesOrders ?? [];
+  const soRows = allSoRows.filter((r) => (showArchived ? !!r.archived : !r.archived));
+  const archivedCount = allSoRows.filter((r) => r.archived).length;
   const byId = {};
   (schedule?.orders ?? []).forEach((o) => { byId[o.id] = o; });
 
@@ -78,6 +81,16 @@ export default function Planning() {
   const remove = async (id) => {
     try { await deleteSalesOrder(id); refetch(); toast({ title: "Order removed" }); }
     catch (e) { toast({ variant: "destructive", title: "Delete failed", description: e.message }); }
+  };
+
+  const archive = async (id) => {
+    try { await archiveSalesOrder(id); refetch(); toast({ title: "Order archived", description: "Hidden from Planning — toggle \"Show archived\" to find it again." }); }
+    catch (e) { toast({ variant: "destructive", title: "Archive failed", description: e.message }); }
+  };
+
+  const unarchive = async (id) => {
+    try { await unarchiveSalesOrder(id); refetch(); toast({ title: "Order restored to Planning" }); }
+    catch (e) { toast({ variant: "destructive", title: "Unarchive failed", description: e.message }); }
   };
 
   const runWhatIfNow = () => {
@@ -109,6 +122,9 @@ export default function Planning() {
                   <SelectItem value="priority">{MODE_LABEL.priority}</SelectItem>
                 </SelectContent>
               </Select>
+              <Button type="button" variant={showArchived ? "default" : "outline"} size="sm" onClick={() => setShowArchived((s) => !s)}>
+                <Archive className="h-4 w-4" /> {showArchived ? "Showing archived" : "Show archived"}{archivedCount > 0 ? ` (${archivedCount})` : ""}
+              </Button>
             </div>
             {schedule && schedule.orders.length > 0 && (
               <div className="flex flex-wrap gap-2 text-sm">
@@ -124,9 +140,12 @@ export default function Planning() {
             )}
           </div>
 
-          {soRows.length === 0 ? (
+          {allSoRows.length === 0 ? (
             <EmptyState icon={ClipboardList} title="No sales orders yet"
               description="Add a sales order to forecast when it can start and finish. Set up Styles and Resources first." />
+          ) : soRows.length === 0 ? (
+            <EmptyState icon={Archive} title={showArchived ? "No archived orders" : "Nothing to plan"}
+              description={showArchived ? "Orders you archive will show up here." : "All orders are archived — toggle \"Show archived\" to see them."} />
           ) : (
             <Card className="mb-6 overflow-x-auto">
               <Table>
@@ -149,6 +168,9 @@ export default function Planning() {
                   {soRows.map((r) => {
                     const f = byId[r.id];
                     const qty = (r.sales_order_lines || []).reduce((n, l) => n + (l.quantity || 0), 0);
+                    const qcFinalQty = actualBySo[r.so_number]?.qc_final || 0;
+                    const disp = dispatchedQty(r.id);
+                    const fullyDispatched = disp >= qty && qty > 0;
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="font-medium">
@@ -166,13 +188,10 @@ export default function Planning() {
                         <TableCell className="text-center">
                           {qty}
                           {(() => {
-                            const qcFinalQty = actualBySo[r.so_number]?.qc_final || 0;
-                            const disp = dispatchedQty(r.id);
                             if (disp === 0 && qcFinalQty < qty) return null;
-                            const full = disp >= qty && qty > 0;
                             return (
-                              <span className={`mt-0.5 block text-[11px] font-medium ${full ? "text-emerald-700" : "text-muted-foreground"}`}>
-                                {full ? "Dispatched" : `Dispatched ${disp}/${qty}`}
+                              <span className={`mt-0.5 block text-[11px] font-medium ${fullyDispatched ? "text-emerald-700" : "text-muted-foreground"}`}>
+                                {fullyDispatched ? "Dispatched" : `Dispatched ${disp}/${qty}`}
                               </span>
                             );
                           })()}
@@ -222,6 +241,15 @@ export default function Planning() {
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setDialog({ open: true, order: r })}>
                             <Pencil className="h-4 w-4" />
                           </Button>
+                          {showArchived ? (
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Restore to Planning" onClick={() => unarchive(r.id)}>
+                              <ArchiveRestore className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          ) : (fullyDispatched || f?.currentStage === "completed") && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Archive (hide from Planning)" onClick={() => archive(r.id)}>
+                              <Archive className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          )}
                           {isAdmin && (
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => remove(r.id)}>
                               <Trash2 className="h-4 w-4 text-muted-foreground" />

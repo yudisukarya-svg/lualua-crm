@@ -116,3 +116,16 @@ export async function saveReadiness(soId, readiness) {
 // progress now syncs automatically from confirmed tukang handovers (PO
 // Tukang). See src/hooks/useActualProgress.js and
 // src/hooks/useProjectActualProgress.js.
+
+// Archive hides a finished order from the main Planning list without
+// deleting it — nothing else about the order changes. Unarchive brings it
+// back. Both are simple, reversible flag flips.
+export async function archiveSalesOrder(id) {
+  const { error } = await supabase.from("sales_orders").update({ archived: true }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function unarchiveSalesOrder(id) {
+  const { error } = await supabase.from("sales_orders").update({ archived: false }).eq("id", id);
+  if (error) throw error;
+}
