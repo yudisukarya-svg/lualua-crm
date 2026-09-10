@@ -72,7 +72,7 @@ export default function GanttChart({ orders }) {
 
       <div
         ref={scrollRef}
-        className="overflow-x-auto rounded-lg border"
+        className="overflow-x-auto overflow-y-visible rounded-lg border"
         onWheel={(e) => { if (e.deltaY !== 0) { e.currentTarget.scrollLeft += e.deltaY; } }}
       >
         <div style={{ minWidth: 220 + days.length * COL }}>
