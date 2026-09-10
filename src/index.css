@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Neutral base — white background, light gray cards (per brief) */
+    --background: 40 30% 99%;
+    --foreground: 24 12% 14%;
+
+    --card: 36 24% 98%;
+    --card-foreground: 24 12% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 24 12% 14%;
+
+    /* Signature accent: dyed-yarn clay / terracotta, used with restraint */
+    --primary: 9 53% 39%;
+    --primary-foreground: 36 33% 96%;
+
+    --secondary: 30 16% 94%;
+    --secondary-foreground: 24 12% 20%;
+
+    --muted: 30 14% 95%;
+    --muted-foreground: 25 8% 45%;
+
+    --accent: 30 18% 93%;
+    --accent-foreground: 24 12% 18%;
+
+    --destructive: 0 65% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 14% 89%;
+    --input: 30 14% 88%;
+    --ring: 9 53% 39%;
+
+    --radius: 0.6rem;
+  }
+
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Respect reduced-motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+}
+
+/* Thin, quiet scrollbars to match the minimalist tone */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-track { background: transparent; }
