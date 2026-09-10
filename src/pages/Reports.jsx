@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useReports } from "@/hooks/useReports";
 import { useSchedule } from "@/hooks/useSchedule";
-import { STAGE_LABELS } from "@/lib/scheduler";
+import { useDailyActuals } from "@/hooks/useDailyActuals";
+import { STAGE_LABELS, makeCalendar } from "@/lib/scheduler";
+import { computeDailyProductionGrid, segmentsFromDays } from "@/lib/dailyProductionGrid";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory } from "lucide-react";
+import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory, ChevronLeft, ChevronRight } from "lucide-react";
 import { humanize, formatDate } from "@/lib/utils";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -27,8 +30,28 @@ function ChartCard({ title, children }) {
 
 export default function Reports() {
   const r = useReports();
-  const { schedule } = useSchedule();
+  const { schedule, raw } = useSchedule();
   const { toast } = useToast();
+  const [dpmStart, setDpmStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  });
+  const dpmEnd = (() => {
+    const d = new Date(dpmStart + "T00:00:00"); d.setDate(d.getDate() + 13);
+    return d.toISOString().slice(0, 10);
+  })();
+  const { rows: dailyActualRows, loading: dpmLoading } = useDailyActuals(dpmStart, dpmEnd);
+  const dpmCalendar = makeCalendar({ sundayOff: raw?.settings?.sunday_off ?? true, saturdayOff: raw?.settings?.saturday_off ?? false, holidays: raw?.holidays || [] });
+  const soById = {}; (raw?.salesOrders || []).forEach((so) => { soById[so.id] = so; });
+  const dpmGrid = computeDailyProductionGrid({
+    machines: raw?.machines || [], board: schedule?.board || [], actualRows: dailyActualRows,
+    soById, startDate: dpmStart, endDate: dpmEnd, calendar: dpmCalendar,
+  });
+  const dpmDates = Object.values(dpmGrid)[0]?.days.map((d) => d.date) || [];
+  const shiftDpmWindow = (weeks) => {
+    const d = new Date(dpmStart + "T00:00:00"); d.setDate(d.getDate() + weeks * 14);
+    setDpmStart(d.toISOString().slice(0, 10));
+  };
 
   const prodOrders = schedule?.orders ?? [];
   const prodCapacity = schedule?.capacity ?? [];
@@ -216,6 +239,71 @@ export default function Reports() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Daily production per machine — confirmed PO Tukang handovers vs schedule */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold"><Factory className="h-4 w-4 text-primary" /> Daily production per machine</CardTitle>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => shiftDpmWindow(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+                <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">{formatDate(dpmStart)} – {formatDate(dpmEnd)}</span>
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => shiftDpmWindow(1)}><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-xs text-muted-foreground">Confirmed knitting handovers from PO Tukang against what each machine was scheduled to run. A red "0" means a day the board expected production but no handover was confirmed.</p>
+              {dpmLoading ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">Loading actuals…</p>
+              ) : (
+                <div className="space-y-4">
+                  {(raw?.machines || []).map((m) => {
+                    const days = dpmGrid[m.id]?.days || [];
+                    const segments = segmentsFromDays(days);
+                    return (
+                      <div key={m.id}>
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-sm font-medium">{m.name}</span>
+                          {segments.length === 0 && <span className="text-xs text-muted-foreground">Nothing scheduled this window</span>}
+                        </div>
+                        {segments.length > 0 && (
+                          <p className="mb-1 truncate text-xs text-muted-foreground">
+                            {segments.map((s, i) => (
+                              <span key={i}>{i > 0 ? " · " : ""}{s.soNumber}{s.customerName ? ` · ${s.customerName}` : ""}{s.styleName ? ` · ${s.styleName}` : ""}</span>
+                            ))}
+                          </p>
+                        )}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr>
+                                {days.map((d) => (
+                                  <th key={d.date} className="whitespace-nowrap px-2 py-1 text-center font-normal text-muted-foreground">
+                                    {new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                {days.map((d) => (
+                                  <td key={d.date}
+                                    title={d.scheduled ? `${d.soNumber}${d.customerName ? " · " + d.customerName : ""}${d.styleName ? " · " + d.styleName : ""}` : "Not scheduled that day"}
+                                    className={`whitespace-nowrap px-2 py-2 text-center ${!d.scheduled ? "text-muted-foreground/50" : d.missing ? "bg-rose-50 font-medium text-rose-700" : "text-foreground"}`}
+                                  >
+                                    {d.scheduled ? (d.missing ? "0" : d.pcs) : "—"}
+                                  </td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
