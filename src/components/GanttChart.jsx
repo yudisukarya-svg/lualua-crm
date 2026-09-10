@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { STAGES, STAGE_LABELS } from "@/lib/scheduler";
 import { formatDate } from "@/lib/utils";
 
@@ -50,18 +51,30 @@ export default function GanttChart({ orders }) {
   }
 
   const COL = 26; // px per day
+  const scrollRef = useRef(null);
+  const scrollBy = (px) => { if (scrollRef.current) scrollRef.current.scrollLeft += px; };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
-        {STAGES.map((s) => (
-          <span key={s} className="inline-flex items-center gap-1.5">
-            <span className={`h-3 w-3 rounded-sm ${STAGE_COLOR[s]}`} />{STAGE_LABELS[s]}
-          </span>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+          {STAGES.map((s) => (
+            <span key={s} className="inline-flex items-center gap-1.5">
+              <span className={`h-3 w-3 rounded-sm ${STAGE_COLOR[s]}`} />{STAGE_LABELS[s]}
+            </span>
+          ))}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" onClick={() => scrollBy(-COL * 7)} className="rounded-md border p-1 hover:bg-muted" title="Scroll earlier"><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" onClick={() => scrollBy(COL * 7)} className="rounded-md border p-1 hover:bg-muted" title="Scroll later"><ChevronRight className="h-4 w-4" /></button>
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div
+        ref={scrollRef}
+        className="overflow-x-auto rounded-lg border"
+        onWheel={(e) => { if (e.deltaY !== 0) { e.currentTarget.scrollLeft += e.deltaY; } }}
+      >
         <div style={{ minWidth: 220 + days.length * COL }}>
           {/* Month band */}
           <div className="flex border-b bg-muted/60 text-[11px] font-medium">

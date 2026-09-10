@@ -281,7 +281,7 @@ export default function Reports() {
                             <thead>
                               <tr>
                                 {days.map((d) => (
-                                  <th key={d.date} className="whitespace-nowrap px-2 py-1 text-center font-normal text-muted-foreground">
+                                  <th key={d.date} className={`whitespace-nowrap px-2 py-1 text-center font-normal ${new Date(d.date + "T00:00:00").getDay() === 0 ? "text-rose-600" : "text-muted-foreground"}`}>
                                     {new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
                                   </th>
                                 ))}

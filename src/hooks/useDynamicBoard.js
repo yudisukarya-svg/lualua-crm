@@ -47,14 +47,7 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
   const calendar = makeCalendar({ sundayOff: settings?.sunday_off ?? true, saturdayOff: settings?.saturday_off ?? false, holidays: holidays || [] });
 
   const activeBlocks = (blocks || []).filter((b) => (b.status || "active") !== "done");
-  const dynamic = computeBlockActuals({
-    blocks: activeBlocks.map((b) => ({
-      ...b,
-      _soNumber: b._soNumber, // attached by caller (needs the SO number, not just id)
-      _planRate: b._planRate,
-    })),
-    stylesById, actualRows, calendar, today,
-  });
+  const dynamic = computeBlockActuals({ blocks: activeBlocks, stylesById, actualRows, calendar, today });
 
   // Auto-complete: any ACTIVE (not already hold/done) block whose remaining
   // qty has hit 0 gets marked done, same as a manual click on the checkmark

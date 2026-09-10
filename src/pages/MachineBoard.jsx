@@ -36,9 +36,11 @@ export default function MachineBoard() {
   // to query PO Tukang by, planned pace to judge ahead/behind). Safe with
   // raw == null (still loading) — the hook just won't have anything to do yet.
   const soByIdEarly = {}; (raw?.salesOrders || []).forEach((so) => { soByIdEarly[so.id] = so; });
+  const machineByIdEarly = {}; (raw?.machines || []).forEach((m) => { machineByIdEarly[m.id] = m; });
   const enrichedBlocks = (raw?.blocks || []).map((b) => ({
     ...b,
     _soNumber: soByIdEarly[b.sales_order_id]?.so_number || null,
+    _machineName: machineByIdEarly[b.machine_id]?.name || null,
     _planRate: raw?.styles?.[b.style_id]?.knitting_machine || 0,
   }));
   const soNumbers = [...new Set(enrichedBlocks.map((b) => b._soNumber).filter(Boolean))];

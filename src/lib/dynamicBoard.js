@@ -1,29 +1,29 @@
 // =============================================================================
-// dynamicBoard.js — Machine Board "Level B" dynamic tracking.
+// dynamicBoard.js — Machine Board "Level B" dynamic tracking (v2).
 //
-// PO Tukang confirms knitting handovers per SO with a free-text style label
-// per line item (e.g. "Top Sunray - M (3)" or "Merlot Top - Cotton Beige
-// 09-4B, 6ply - XS"). This module:
-//   1. Matches that free text back to a production_styles.id (longest
-//      prefix match, so trailing size/colour/ply text never confuses it).
-//   2. Attributes each day's delivered qty for a given SO+style across all
-//      of that SO+style's machine_blocks siblings using a LOCKED ratio
-//      (each sibling's initial_qty / sum of all siblings' initial_qty) —
-//      locked at block-creation/split time, not recomputed from current
-//      remaining qty, so it stays stable as blocks get consumed unevenly.
-//   3. From the per-block delivered total, derives remaining qty, the
-//      cumulative-average actual pace (working days since first delivery),
-//      and a projected ETA.
+// v1 attributed each day's delivered qty across sibling blocks (same SO+
+// style) by a LOCKED RATIO of initial_qty. That was wrong for blocks that
+// are sequential batches on the same machine rather than a parallel split
+// across different machines — e.g. a 9-pc block queued before a 33-pc block
+// for the same SO+style+machine. The ratio approach credited the later
+// block with a share of production before the earlier one was actually
+// finished, which caused blocks to be marked "done" prematurely.
+//
+// v2 instead:
+//   1. Only uses delivery rows where PO Tukang recorded WHICH MACHINE did
+//      the work ("mesin" field). Rows with no machine recorded are not
+//      guessed at or split — they simply aren't counted here. A block with
+//      no machine-attributed deliveries stays on the static plan.
+//   2. Within a single machine, sibling blocks for the same SO+style are
+//      consumed in QUEUE ORDER (seq) — the earliest-queued block absorbs
+//      delivered qty first, up to its own qty, before any overflow counts
+//      toward the next block. This mirrors how the floor actually works:
+//      you finish what's queued first before starting the next.
 //
 // Everything here is a pure function over already-fetched data — nothing in
-// this file talks to Supabase. Computed fresh every time the board loads;
-// nothing here is persisted except the eventual "mark done" write, which the
-// caller (useDynamicBoard) performs separately.
+// this file talks to Supabase. Computed fresh every time the board loads.
 // =============================================================================
 
-// Find the production style whose name is the LONGEST matching prefix of
-// styleRaw, requiring a word boundary right after the name (so "Top" can't
-// wrongly match "Top Sunray"). Case-insensitive.
 export function matchStyleId(styleRaw, stylesById) {
   if (!styleRaw) return null;
   const raw = styleRaw.trim().toLowerCase();
@@ -33,31 +33,28 @@ export function matchStyleId(styleRaw, stylesById) {
     if (!name) continue;
     if (!raw.startsWith(name)) continue;
     const next = raw.slice(name.length, name.length + 1);
-    if (next !== "" && next !== " " && next !== "-") continue; // not a clean boundary
+    if (next !== "" && next !== " " && next !== "-") continue;
     if (name.length > bestLen) { bestLen = name.length; best = id; }
   }
   return best;
 }
 
-// Sum actual delivered qty per (so_number, style_id, date) from raw
-// po_style_actuals rows, resolving each row's free-text style to an id.
-// Rows that don't match any known style are dropped (with a count, for
-// visibility) rather than guessed at.
-export function groupActualsByKey(actualRows, stylesById) {
-  const byKey = {}; // `${so}:${styleId}` -> [{date, qty}]
-  let unmatched = 0;
+// Sum machine-attributed daily delivered qty, keyed by
+// `${so}:${styleId}:${mesin}:${date}`. Rows with no mesin are dropped
+// (returned separately as `unattributed` for visibility, never guessed at).
+export function groupActualsByMachineDay(actualRows, stylesById) {
+  const byKey = {};
+  let unmatchedStyle = 0, noMachine = 0;
   (actualRows || []).forEach((r) => {
     const styleId = matchStyleId(r.style_raw, stylesById);
-    if (!styleId) { unmatched++; return; }
-    const key = `${r.so}:${styleId}`;
-    (byKey[key] = byKey[key] || []).push({ date: r.tgl, qty: Number(r.aktual) || 0 });
+    if (!styleId) { unmatchedStyle++; return; }
+    if (!r.mesin) { noMachine++; return; }
+    const key = `${r.so}:${styleId}:${r.mesin}`;
+    (byKey[key] = byKey[key] || {})[r.tgl] = ((byKey[key] || {})[r.tgl] || 0) + (Number(r.aktual) || 0);
   });
-  return { byKey, unmatched };
+  return { byKey, unmatchedStyle, noMachine };
 }
 
-// Working days elapsed from `start` to `today` inclusive of the start day
-// itself (so a block that started and delivered today shows 1 day elapsed,
-// not 0). Uses the same calendar the main scheduler uses.
 function elapsedWorkingDays(calendar, start, today) {
   if (!start) return 0;
   if (start >= today) return 1;
@@ -74,53 +71,62 @@ function addWorkingDays(calendar, fromDate, n) {
   return d.toISOString().slice(0, 10);
 }
 
-// Main entry point. Returns { [blockId]: BlockActual } for every block that
-// belongs to an SO+style with at least one matched actual delivery. Blocks
-// with no actual data at all are simply absent from the result — callers
-// should fall back to the static/planned display for those.
-//
-// BlockActual = {
-//   deliveredQty, remainingQty, initialQty,
-//   actualStartDate, pace (pcs/working-day), planPace,
-//   etaDate, paceStatus: 'ahead' | 'onpace' | 'behind',
-// }
+// blocks: machine_blocks rows enriched with `_soNumber` and `_machineName`
+//   (attached by the caller), plus the usual id/seq/initial_qty/qty/
+//   sales_order_id/style_id/status.
+// Returns { [blockId]: { deliveredQty, remainingQty, initialQty,
+//   actualStartDate, pace, planPace, etaDate, paceStatus } } — only for
+// blocks that received at least one machine-attributed delivery. Blocks
+// absent from the result should fall back to the static/planned display.
 export function computeBlockActuals({ blocks, stylesById, actualRows, calendar, today }) {
-  const { byKey } = groupActualsByKey(actualRows, stylesById);
+  const { byKey } = groupActualsByMachineDay(actualRows, stylesById);
 
-  // Group sibling blocks by so+style so we can compute the locked ratio.
-  const siblingsByKey = {};
+  // Group blocks by (sales_order_id, style_id, machine_id) — these are the
+  // ones that genuinely compete for the same machine-attributed delivery
+  // stream, consumed in seq order.
+  const groups = {};
   (blocks || []).forEach((b) => {
-    const k = `${b.sales_order_id}:${b.style_id}`;
-    (siblingsByKey[k] = siblingsByKey[k] || []).push(b);
+    const k = `${b.sales_order_id}:${b.style_id}:${b.machine_id}`;
+    (groups[k] = groups[k] || []).push(b);
   });
 
   const result = {};
-  Object.entries(siblingsByKey).forEach(([blocksKey, siblings]) => {
-    // blocksKey is `${sales_order_id}:${style_id}` (uuids) — but actuals are
-    // keyed by `${so_number}:${style_id}`. Resolve via any sibling's SO number,
-    // which the caller attaches as `_soNumber` on each block.
-    const soNumber = siblings[0]?._soNumber;
-    if (!soNumber) return;
-    const actualKey = `${soNumber}:${siblings[0].style_id}`;
+  Object.values(groups).forEach((siblings) => {
+    const first = siblings[0];
+    const soNumber = first._soNumber, machineName = first._machineName;
+    if (!soNumber || !machineName) return;
+    const actualKey = `${soNumber}:${first.style_id}:${machineName}`;
     const daily = byKey[actualKey];
-    if (!daily || daily.length === 0) return; // no data at all — stays static
+    if (!daily) return; // no machine-attributed data at all for this SO+style+machine — stays static
 
-    const totalInitial = siblings.reduce((s, b) => s + (Number(b.initial_qty) || Number(b.qty) || 0), 0);
-    if (totalInitial <= 0) return;
+    const ordered = [...siblings].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || (a.created_at || "").localeCompare(b.created_at || ""));
+    const dates = Object.keys(daily).sort();
 
-    // Collapse to per-date totals, then find the first delivery date.
-    const byDate = {};
-    daily.forEach((r) => { byDate[r.date] = (byDate[r.date] || 0) + r.qty; });
-    const dates = Object.keys(byDate).sort();
-    const totalDelivered = Object.values(byDate).reduce((a, b) => a + b, 0);
-    const firstDate = dates[0];
+    // Day-by-day cumulative consumption, sequential across ordered blocks.
+    let cumulative = 0;
+    const firstCreditDate = {}; // blockId -> first date this block started receiving credit
+    const deliveredAsOf = {}; // blockId -> running delivered total
+    ordered.forEach((b) => { deliveredAsOf[b.id] = 0; });
 
-    siblings.forEach((b) => {
+    dates.forEach((date) => {
+      cumulative += daily[date];
+      let priorCapacity = 0;
+      for (const b of ordered) {
+        const cap = Number(b.initial_qty) || Number(b.qty) || 0;
+        const deliveredForThisBlock = Math.max(0, Math.min(cap, cumulative - priorCapacity));
+        if (deliveredForThisBlock > 0 && firstCreditDate[b.id] === undefined) firstCreditDate[b.id] = date;
+        deliveredAsOf[b.id] = deliveredForThisBlock;
+        priorCapacity += cap;
+      }
+    });
+
+    ordered.forEach((b) => {
+      const deliveredQty = deliveredAsOf[b.id] || 0;
+      if (deliveredQty <= 0) return; // this sibling hasn't started receiving credit yet — stays static
       const initialQty = Number(b.initial_qty) || Number(b.qty) || 0;
-      const ratio = initialQty / totalInitial;
-      const deliveredQty = Math.min(initialQty, totalDelivered * ratio);
       const remainingQty = Math.max(0, initialQty - deliveredQty);
-      const days = elapsedWorkingDays(calendar, firstDate, today);
+      const startDate = firstCreditDate[b.id];
+      const days = elapsedWorkingDays(calendar, startDate, today);
       const pace = days > 0 ? deliveredQty / days : 0;
       const planPace = Number(b._planRate) || 0;
       let paceStatus = "onpace";
@@ -133,7 +139,7 @@ export function computeBlockActuals({ blocks, stylesById, actualRows, calendar, 
       else if (pace > 0) etaDate = addWorkingDays(calendar, today, Math.ceil(remainingQty / pace));
       else if (planPace > 0) etaDate = addWorkingDays(calendar, today, Math.ceil(remainingQty / planPace));
 
-      result[b.id] = { deliveredQty, remainingQty, initialQty, actualStartDate: firstDate, pace, planPace, etaDate, paceStatus };
+      result[b.id] = { deliveredQty, remainingQty, initialQty, actualStartDate: startDate, pace, planPace, etaDate, paceStatus };
     });
   });
 
