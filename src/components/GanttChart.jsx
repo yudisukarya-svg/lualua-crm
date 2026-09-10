@@ -70,11 +70,7 @@ export default function GanttChart({ orders }) {
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="overflow-x-auto overflow-y-visible rounded-lg border"
-        onWheel={(e) => { if (e.deltaY !== 0) { e.currentTarget.scrollLeft += e.deltaY; } }}
-      >
+      <div ref={scrollRef} className="max-h-[65vh] overflow-auto rounded-lg border">
         <div style={{ minWidth: 220 + days.length * COL }}>
           {/* Frozen header: month band + date row stay visible while scrolling down through orders */}
           <div className="sticky top-0 z-20 bg-card">
