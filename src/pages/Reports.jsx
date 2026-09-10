@@ -44,7 +44,7 @@ export default function Reports() {
   const dpmCalendar = makeCalendar({ sundayOff: raw?.settings?.sunday_off ?? true, saturdayOff: raw?.settings?.saturday_off ?? false, holidays: raw?.holidays || [] });
   const soById = {}; (raw?.salesOrders || []).forEach((so) => { soById[so.id] = so; });
   const dpmGrid = computeDailyProductionGrid({
-    machines: raw?.machines || [], board: schedule?.board || [], rawBlocks: raw?.blocks || [], actualRows: dailyActualRows,
+    machines: raw?.machines || [], board: schedule?.board || [], actualRows: dailyActualRows,
     soById, startDate: dpmStart, endDate: dpmEnd, calendar: dpmCalendar,
   });
   const dpmDates = Object.values(dpmGrid)[0]?.days.map((d) => d.date) || [];
