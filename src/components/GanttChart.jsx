@@ -76,27 +76,30 @@ export default function GanttChart({ orders }) {
         onWheel={(e) => { if (e.deltaY !== 0) { e.currentTarget.scrollLeft += e.deltaY; } }}
       >
         <div style={{ minWidth: 220 + days.length * COL }}>
-          {/* Month band */}
-          <div className="flex border-b bg-muted/60 text-[11px] font-medium">
-            <div className="sticky left-0 z-10 w-[220px] shrink-0 border-r bg-muted/60 px-3 py-1" />
-            {months.map((m, i) => (
-              <div key={i} style={{ width: m.span * COL }} className="shrink-0 border-r px-2 py-1 last:border-r-0">
-                {m.label}
-              </div>
-            ))}
-          </div>
-          {/* Date header */}
-          <div className="flex border-b bg-muted/40 text-[10px] text-muted-foreground">
-            <div className="sticky left-0 z-10 w-[220px] shrink-0 border-r bg-muted/40 px-3 py-1.5 font-medium">Order</div>
-            {days.map((d) => {
-              const wd = toDate(d).getUTCDay();
-              const weekend = wd === 0 || wd === 6;
-              return (
-                <div key={d} style={{ width: COL }} className={`shrink-0 py-1.5 text-center ${weekend ? "bg-muted/60" : ""}`}>
-                  {toDate(d).getUTCDate()}
+          {/* Frozen header: month band + date row stay visible while scrolling down through orders */}
+          <div className="sticky top-0 z-20 bg-card">
+            {/* Month band */}
+            <div className="flex border-b bg-muted/60 text-[11px] font-medium">
+              <div className="sticky left-0 z-10 w-[220px] shrink-0 border-r bg-muted/60 px-3 py-1" />
+              {months.map((m, i) => (
+                <div key={i} style={{ width: m.span * COL }} className="shrink-0 border-r px-2 py-1 last:border-r-0">
+                  {m.label}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            {/* Date header */}
+            <div className="flex border-b bg-muted/40 text-[10px] text-muted-foreground">
+              <div className="sticky left-0 z-10 w-[220px] shrink-0 border-r bg-muted/40 px-3 py-1.5 font-medium">Order</div>
+              {days.map((d) => {
+                const wd = toDate(d).getUTCDay();
+                const weekend = wd === 0 || wd === 6;
+                return (
+                  <div key={d} style={{ width: COL }} className={`shrink-0 py-1.5 text-center ${weekend ? "bg-muted/60" : ""}`}>
+                    {toDate(d).getUTCDate()}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Order rows */}
