@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Wand2, Loader2, X, Power, ArrowRightLeft, Cpu, Plus, ChevronUp, ChevronDown, Printer, Split, Clock, Check, Pause, Play, TrendingUp, TrendingDown } from "lucide-react";
+import { Wand2, Loader2, X, Power, ArrowRightLeft, Cpu, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, Split, Clock, Check, Pause, Play, TrendingUp, TrendingDown, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSchedule, buildJobs } from "@/hooks/useSchedule";
 import { useMachines, autoFillBoard, moveBlock, removeBlock, setMachineActive, addBlock, setBlockSeq, splitBlock, addReservation, removeReservation, completeBlock, holdBlock, resumeBlock } from "@/hooks/useMachines";
@@ -12,6 +12,8 @@ import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -31,6 +33,19 @@ export default function MachineBoard() {
   const [resState, setResState] = useState({ open: false, machine: null, date: new Date().toISOString().slice(0, 10), hours: 2, label: "", so_number: "", zoho_salesorder_id: "", style_name: "" });
   const [soPicker, setSoPicker] = useState({ open: false, list: [], loading: false, q: "", step: "so", so: null, styles: [] });
   const [holdDialog, setHoldDialog] = useState({ open: false, block: null, reason: "" });
+  const [boardTab, setBoardTab] = useState("board");
+  const [completedStart, setCompletedStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 13);
+    return d.toISOString().slice(0, 10);
+  });
+  const completedEnd = (() => {
+    const d = new Date(completedStart + "T00:00:00"); d.setDate(d.getDate() + 13);
+    return d.toISOString().slice(0, 10);
+  })();
+  const shiftCompletedWindow = (weeks) => {
+    const d = new Date(completedStart + "T00:00:00"); d.setDate(d.getDate() + weeks * 14);
+    setCompletedStart(d.toISOString().slice(0, 10));
+  };
 
   // Enrich blocks with the fields the dynamic-tracking hook needs (SO number
   // to query PO Tukang by, planned pace to judge ahead/behind). Safe with
@@ -85,6 +100,11 @@ export default function MachineBoard() {
 
   const soById = {}; (raw.salesOrders || []).forEach((so) => { soById[so.id] = so; });
   const styleName = (styleId) => raw.salesOrders.flatMap((so) => so.sales_order_lines || []).find((l) => l.style_id === styleId)?.production_styles?.name || "—";
+  const machineById = {}; machines.forEach((m) => { machineById[m.id] = m; });
+  const completedRows = (raw.blocks || [])
+    .filter((b) => b.status === "done" && b.completed_at && b.completed_at.slice(0, 10) >= completedStart && b.completed_at.slice(0, 10) <= completedEnd)
+    .map((b) => ({ block: b, so: soById[b.sales_order_id], machine: machineById[b.machine_id] }))
+    .sort((a, b) => (b.block.completed_at || "").localeCompare(a.block.completed_at || ""));
 
   const runAutoFill = async () => {
     setBusy(true);
@@ -240,6 +260,13 @@ export default function MachineBoard() {
         <Button onClick={runAutoFill} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} Auto-fill</Button>
       </PageHeader>
 
+      <Tabs value={boardTab} onValueChange={setBoardTab}>
+        <TabsList>
+          <TabsTrigger value="board">Board</TabsTrigger>
+          <TabsTrigger value="completed">Completed{completedRows.length > 0 ? ` (${completedRows.length})` : ""}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="board">
       {machines.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No machines set up yet.</Card>
       ) : (
@@ -414,6 +441,51 @@ export default function MachineBoard() {
       <p className="mt-4 text-xs text-muted-foreground">
         Auto-fill spreads machine-knit orders across the least-busy machines by due date. You can move a block to another machine of the same gauge, remove it, or mark a machine broken (its work then needs moving). The forecast on the Planning page reflects this board.
       </p>
+        </TabsContent>
+
+        <TabsContent value="completed">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Marked as done</CardTitle>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => shiftCompletedWindow(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+                <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">{fmtDate(completedStart)} – {fmtDate(completedEnd)}</span>
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => shiftCompletedWindow(1)}><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {completedRows.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No blocks marked done in this window.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>SO</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Style</TableHead>
+                      <TableHead>Machine</TableHead>
+                      <TableHead className="text-center">Qty</TableHead>
+                      <TableHead>Completed</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {completedRows.map(({ block, so, machine }) => (
+                      <TableRow key={block.id}>
+                        <TableCell className="font-medium">{so?.so_number || "—"}</TableCell>
+                        <TableCell className="text-muted-foreground">{so?.customers?.customer_name || "—"}</TableCell>
+                        <TableCell className="text-muted-foreground">{styleName(block.style_id)}</TableCell>
+                        <TableCell className="text-muted-foreground">{machine?.name || "—"}</TableCell>
+                        <TableCell className="text-center">{block.qty}</TableCell>
+                        <TableCell className="text-muted-foreground">{fmtDate(block.completed_at?.slice(0, 10))}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
       <Dialog open={splitState.open} onOpenChange={(o) => setSplitState((s) => ({ ...s, open: o }))}>
         <DialogContent>
           <DialogHeader>
