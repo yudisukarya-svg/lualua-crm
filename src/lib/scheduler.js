@@ -270,11 +270,23 @@ export function computeSchedule({ jobs, resources, settings = {}, holidays = [],
         return;
       }
 
+      // ---- Stages this style doesn't go through at all: pull straight
+      // through to match upstream, every day, using no worker capacity. ----
+      live.forEach((o, idx) => {
+        if (!(o.style.skipStages || []).includes(stage)) return;
+        const upstream = o.completed[STAGES[i - 1]]; // live/same-day value — a skipped stage takes zero time
+        if (upstream <= o.completed[stage]) return;
+        if (!o.stageStart[stage]) o.stageStart[stage] = dStr;
+        o.completed[stage] = upstream;
+        if (o.completed[stage] >= o.quantity && !o.stageFinish[stage]) o.stageFinish[stage] = dStr;
+      });
+
       // ---- Generic single-pool stage ----
       const pool = poolsFor(stage, resources)[0];
       const workersAvail = pool.workers;
       let workersUsed = 0, demandWorkers = 0;
       const waiting = live.map((o, idx) => {
+        if ((o.style.skipStages || []).includes(stage)) return { idx, avail: 0, style: o.style, workers: 0, pieces: 0 };
         const upstream = snap[idx].completed[STAGES[i - 1]];
         const avail = Math.max(0, upstream - snap[idx].completed[stage]);
         return { idx, avail, style: o.style, workers: 0, pieces: 0 };

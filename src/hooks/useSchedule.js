@@ -8,7 +8,7 @@ const RATE_FIELDS = ["knitting_manual", "knitting_machine", "linking", "finishin
 function stylesToMap(rows) {
   const map = {};
   rows.forEach((s) => {
-    map[s.id] = { name: s.name || "", method: s.knitting_method || "manual", gauge: s.knitting_gauge || null, wastage: Number(s.yarn_wastage_pct) || 0 };
+    map[s.id] = { name: s.name || "", method: s.knitting_method || "manual", gauge: s.knitting_gauge || null, wastage: Number(s.yarn_wastage_pct) || 0, skipStages: Array.isArray(s.skip_stages) ? s.skip_stages : [] };
     RATE_FIELDS.forEach((f) => { map[s.id][f] = Number(s[f]) || 0; });
   });
   return map;

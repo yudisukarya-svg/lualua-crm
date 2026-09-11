@@ -62,8 +62,10 @@ export function diagnoseOrder(so, { styles, resources, machines = [], blocks = [
       }
     }
 
-    // --- Downstream stages ---
+    // --- Downstream stages (skip ones this style doesn't go through at all) ---
+    const skip = new Set(st.skipStages || []);
     DOWNSTREAM.forEach((s) => {
+      if (skip.has(s)) return;
       if (!(st[s] > 0)) problems.push({ what: `${name}: ${STAGE_LABELS[s]} speed is 0`, fix: `Styles → fill in the ${STAGE_LABELS[s]} speed.` });
     });
   });

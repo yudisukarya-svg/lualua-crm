@@ -56,7 +56,14 @@ export default function Styles() {
                   <TableCell className="text-muted-foreground">
                     {s.knitting_method === "machine" ? `Machine ${s.knitting_gauge ? s.knitting_gauge + "g" : ""}` : "Manual"}
                   </TableCell>
-                  {COLS.map(([k]) => <TableCell key={k} className="text-center text-muted-foreground">{Number(s[k]) || 0}</TableCell>)}
+                  {COLS.map(([k]) => {
+                    const skipped = Array.isArray(s.skip_stages) && s.skip_stages.includes(k);
+                    return (
+                      <TableCell key={k} className="text-center text-muted-foreground">
+                        {skipped ? <span title="No process for this style">—</span> : Number(s[k]) || 0}
+                      </TableCell>
+                    );
+                  })}
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDialog({ open: true, style: s })}>
                       <Pencil className="h-4 w-4" />

@@ -25,6 +25,7 @@ export async function createStyle(payload) {
     knitting_method: payload.knitting_method || "manual",
     knitting_gauge: payload.knitting_method === "machine" ? (payload.knitting_gauge || null) : null,
     yarn_wastage_pct: Number(payload.yarn_wastage_pct) || 0,
+    skip_stages: Array.isArray(payload.skip_stages) ? payload.skip_stages : [],
     created_by: user?.id,
   };
   RATE_FIELDS.forEach((f) => { row[f] = Number(payload[f]) || 0; });
@@ -39,6 +40,7 @@ export async function updateStyle(id, payload) {
     knitting_method: payload.knitting_method || "manual",
     knitting_gauge: payload.knitting_method === "machine" ? (payload.knitting_gauge || null) : null,
     yarn_wastage_pct: Number(payload.yarn_wastage_pct) || 0,
+    skip_stages: Array.isArray(payload.skip_stages) ? payload.skip_stages : [],
   };
   RATE_FIELDS.forEach((f) => { row[f] = Number(payload[f]) || 0; });
   const { data, error } = await supabase.from("production_styles").update(row).eq("id", id).select().single();

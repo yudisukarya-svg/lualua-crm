@@ -21,7 +21,7 @@ const DOWNSTREAM = [
   { key: "packing", label: "Packing" },
 ];
 
-const EMPTY = { name: "", customer_id: "", knitting_method: "manual", knitting_gauge: "", notes: "", yarn_wastage_pct: "", knitting_manual: "", knitting_machine: "", linking: "", finishing: "", steam: "", label: "", qc: "", packing: "" };
+const EMPTY = { name: "", customer_id: "", knitting_method: "manual", knitting_gauge: "", notes: "", yarn_wastage_pct: "", knitting_manual: "", knitting_machine: "", linking: "", finishing: "", steam: "", label: "", qc: "", packing: "", skip_stages: [] };
 
 export default function StyleFormDialog({ open, onOpenChange, style, onSaved }) {
   const { toast } = useToast();
@@ -34,12 +34,16 @@ export default function StyleFormDialog({ open, onOpenChange, style, onSaved }) 
 
   useEffect(() => {
     if (!open) return;
-    setForm(style ? { ...EMPTY, ...style, customer_id: style.customer_id || "", notes: style.notes || "" } : EMPTY);
+    setForm(style ? { ...EMPTY, ...style, customer_id: style.customer_id || "", notes: style.notes || "", skip_stages: Array.isArray(style.skip_stages) ? style.skip_stages : [] } : EMPTY);
     if (style) getStyleBom(style.id).then((rows) => setBom(rows.map((r) => ({ yarn_id: r.yarn_id, grams_per_pc: r.grams_per_pc }))));
     else setBom([]);
   }, [open, style]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? e.target.value : e }));
+  const toggleSkip = (stageKey) => setForm((f) => {
+    const has = (f.skip_stages || []).includes(stageKey);
+    return { ...f, skip_stages: has ? f.skip_stages.filter((s) => s !== stageKey) : [...(f.skip_stages || []), stageKey] };
+  });
   const setBomLine = (i, k, v) => setBom((b) => b.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
   const addBomLine = () => setBom((b) => [...b, { yarn_id: "", grams_per_pc: "" }]);
   const removeBomLine = (i) => setBom((b) => b.filter((_, idx) => idx !== i));
@@ -122,13 +126,22 @@ export default function StyleFormDialog({ open, onOpenChange, style, onSaved }) 
                 <p className="text-xs text-muted-foreground">pcs / worker / day</p>
               </div>
             )}
-            {DOWNSTREAM.map((r) => (
-              <div key={r.key} className="space-y-1.5">
-                <Label className="text-sm">{r.label}</Label>
-                <Input type="number" min="0" step="0.1" value={form[r.key]} onChange={set(r.key)} placeholder="0" />
-                <p className="text-xs text-muted-foreground">pcs / worker / day</p>
-              </div>
-            ))}
+            {DOWNSTREAM.map((r) => {
+              const skipped = (form.skip_stages || []).includes(r.key);
+              return (
+                <div key={r.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">{r.label}</Label>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <input type="checkbox" className="h-3.5 w-3.5 rounded border-input" checked={skipped} onChange={() => toggleSkip(r.key)} />
+                      No process
+                    </label>
+                  </div>
+                  <Input type="number" min="0" step="0.1" value={form[r.key]} onChange={set(r.key)} placeholder="0" disabled={skipped} className={skipped ? "opacity-50" : ""} />
+                  <p className="text-xs text-muted-foreground">{skipped ? "Skipped — never part of this style's forecast" : "pcs / worker / day"}</p>
+                </div>
+              );
+            })}
           </div>
 
           {/* Yarn / bill of materials */}
