@@ -49,7 +49,7 @@ export function useAttentionItems({ raw }) {
     .filter((b) => (b.status || "active") === "active")
     .map((b) => {
       const so = soById[b.sales_order_id];
-      if (!so) return null;
+      if (!so || so.archived) return null;
       const last = lastDeliveryByKey[`${so.so_number}:${b.style_id}`];
       const sinceDate = last || (b.created_at || "").slice(0, 10);
       if (!sinceDate) return null;

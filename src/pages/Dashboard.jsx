@@ -36,7 +36,8 @@ export default function Dashboard() {
   const [uploads, setUploads] = useState([]);
   const [notes, setNotes] = useState([]);
 
-  const orders = schedule?.orders ?? [];
+  const archivedSoIds = new Set((raw?.salesOrders || []).filter((so) => so.archived).map((so) => so.id));
+  const orders = (schedule?.orders ?? []).filter((o) => !archivedSoIds.has(o.id));
   const todayStr = new Date().toISOString().slice(0, 10);
   const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const lateOrders = orders.filter((o) => o.delayRisk);
