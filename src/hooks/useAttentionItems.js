@@ -61,7 +61,11 @@ export function useAttentionItems({ raw }) {
 
   const pendingSamples = samples
     .filter((s) => s.pending)
-    .map((s) => ({ ...s, daysPending: s.pending_since ? calendar.workingDaysBetween(s.pending_since, today) : null }))
+    .map((s) => {
+      const calendarDays = s.pending_since ? Math.round((new Date(today) - new Date(s.pending_since)) / 86400000) : null;
+      return { ...s, daysPending: s.pending_since ? calendar.workingDaysBetween(s.pending_since, today) : null, calendarDaysPending: calendarDays };
+    })
+    .filter((s) => s.calendarDaysPending == null || s.calendarDaysPending <= 30)
     .sort((a, b) => (b.daysPending || 0) - (a.daysPending || 0));
 
   const in3 = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
