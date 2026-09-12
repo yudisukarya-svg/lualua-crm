@@ -126,6 +126,7 @@ export function computeBlockActuals({ blocks, stylesById, actualRows, calendar, 
     });
 
     ordered.forEach((b) => {
+      if (b.status === "done") return; // locked — capacity above still counted, but no dynamic info needed
       const deliveredQty = deliveredAsOf[b.id] || 0;
       if (deliveredQty <= 0) return; // this sibling hasn't started receiving credit yet — stays static
       const initialQty = Number(b.initial_qty) || Number(b.qty) || 0;
