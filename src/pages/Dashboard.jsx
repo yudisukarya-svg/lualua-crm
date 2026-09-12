@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Users, Scissors, Factory, PackageCheck, CheckCircle2, Clock, FileText, StickyNote, AlertTriangle, CalendarClock, Layers, ClipboardList } from "lucide-react";
+import { Users, Scissors, Factory, PackageCheck, CheckCircle2, Clock, FileText, StickyNote, AlertTriangle, CalendarClock, Layers, ClipboardList, PauseCircle, ThumbsUp, Radio } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useActivities } from "@/hooks/useActivities";
 import { useSchedule } from "@/hooks/useSchedule";
+import { useAttentionItems } from "@/hooks/useAttentionItems";
 import { STAGE_LABELS } from "@/lib/scheduler";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,8 @@ function Stat({ icon: Icon, label, value, tone = "text-primary", to }) {
 export default function Dashboard() {
   const { stats } = useDashboard();
   const { activities } = useActivities({ limit: 8 });
-  const { schedule } = useSchedule();
+  const { schedule, raw } = useSchedule();
+  const { loading: attnLoading, staleBlocks, pendingSamples, approvalNeeded } = useAttentionItems({ raw });
   const [deadlines, setDeadlines] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -39,8 +41,11 @@ export default function Dashboard() {
   const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const lateOrders = orders.filter((o) => o.delayRisk);
   const dueSoon = orders.filter((o) => o.dueDate && o.dueDate >= todayStr && o.dueDate <= in7);
+  const laggingDueSoon = dueSoon.filter((o) => !o.delayRisk && (o.percent ?? 100) < 50);
   const totalReject = orders.reduce((n, o) => n + (o.rejectPanels || 0), 0);
   const onTime = orders.filter((o) => o.completionDate && !o.delayRisk).length;
+  const styleName = (styleId) => (raw?.salesOrders || []).flatMap((so) => so.sales_order_lines || []).find((l) => l.style_id === styleId)?.production_styles?.name || "—";
+  const attentionCount = lateOrders.length + staleBlocks.length + pendingSamples.length + approvalNeeded.length;
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -67,6 +72,74 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Production at a glance" />
+
+      {/* Needs follow-up today */}
+      <Card className="mt-2 border-amber-200">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-amber-800">
+            <Radio className="h-4 w-4" /> Perlu ditindaklanjuti hari ini{attentionCount > 0 ? ` (${attentionCount})` : ""}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {attnLoading ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : attentionCount === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Tidak ada yang perlu ditindaklanjuti khusus hari ini. 👍</p>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2">
+              <div>
+                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground"><Factory className="h-3.5 w-3.5" /> Tim Produksi</h3>
+                <div className="space-y-2">
+                  {lateOrders.slice(0, 5).map((o) => (
+                    <Link key={o.id} to="/planning" className="block rounded-md border border-rose-200 bg-rose-50/50 p-2.5 text-sm hover:bg-rose-50">
+                      <span className="font-medium">{o.soNumber}</span> <span className="text-muted-foreground">· {o.customerName}</span>
+                      <p className="text-xs text-rose-700">Forecast telat — selesai {o.completionDate ? formatDate(o.completionDate) : "—"}, due {formatDate(o.dueDate)}</p>
+                    </Link>
+                  ))}
+                  {laggingDueSoon.slice(0, 5).map((o) => (
+                    <Link key={o.id} to="/planning" className="block rounded-md border border-amber-200 bg-amber-50/50 p-2.5 text-sm hover:bg-amber-50">
+                      <span className="font-medium">{o.soNumber}</span> <span className="text-muted-foreground">· {o.customerName}</span>
+                      <p className="text-xs text-amber-700">Due {formatDate(o.dueDate)} (≤7 hari), progress baru {o.percent ?? 0}%</p>
+                    </Link>
+                  ))}
+                  {staleBlocks.slice(0, 5).map(({ block, so, styleId, lastDelivery, daysSince }) => (
+                    <Link key={block.id} to="/planning/board" className="block rounded-md border border-slate-200 bg-slate-50 p-2.5 text-sm hover:bg-slate-100">
+                      <span className="font-medium">{so.so_number}</span> <span className="text-muted-foreground">· {styleName(styleId)}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {lastDelivery ? `Belum ada serah baru sejak ${formatDate(lastDelivery)}` : "Belum pernah ada serah terkonfirmasi"} — {daysSince} hari kerja
+                      </p>
+                    </Link>
+                  ))}
+                  {lateOrders.length === 0 && laggingDueSoon.length === 0 && staleBlocks.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Tidak ada.</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground"><Scissors className="h-3.5 w-3.5" /> Tim Sample</h3>
+                <div className="space-y-2">
+                  {pendingSamples.slice(0, 5).map((s) => (
+                    <div key={s.id} className="rounded-md border border-rose-200 bg-rose-50/50 p-2.5 text-sm">
+                      <span className="flex items-center gap-1.5 font-medium"><PauseCircle className="h-3.5 w-3.5 text-rose-600" /> {s.so} <span className="font-normal text-muted-foreground">· {s.customer}</span></span>
+                      <p className="text-xs text-rose-700">{s.pending_reason || "Terhambat"}{s.daysPending != null ? ` — ${s.daysPending} hari kerja` : ""}</p>
+                    </div>
+                  ))}
+                  {approvalNeeded.slice(0, 5).map((s) => (
+                    <div key={s.id} className="rounded-md border border-amber-200 bg-amber-50/50 p-2.5 text-sm">
+                      <span className="flex items-center gap-1.5 font-medium"><ThumbsUp className="h-3.5 w-3.5 text-amber-600" /> {s.so} <span className="font-normal text-muted-foreground">· {s.customer}</span></span>
+                      <p className="text-xs text-amber-700">Belum ACC customer — deadline {formatDate(s.deadline)}</p>
+                    </div>
+                  ))}
+                  {pendingSamples.length === 0 && approvalNeeded.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Tidak ada.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat icon={Users} label="Total Customers" value={stats.customers} to="/customers" />
