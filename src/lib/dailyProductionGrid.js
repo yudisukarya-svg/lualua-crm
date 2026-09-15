@@ -60,12 +60,12 @@ export function computeDailyProductionGrid({ machines, board, rawBlocks, stylesB
         // Nothing scheduled here per the board. If real confirmed pcs exist
         // anyway (unplanned work, or a board change after the fact), still
         // show the true number rather than hiding it — just don't flag it.
-        return { date, scheduled: pcs > 0, pcs, target: 0, missing: false, soNumber: null, customerName: null, styleName: null };
+        return { date, scheduled: pcs > 0, pcs, target: 0, missing: false, isWorkingDay, soNumber: null, customerName: null, styleName: null };
       }
       const so = soById[active.soId];
       const target = Number(stylesById?.[styleIdByBlockId[active.blockId]]?.knitting_machine) || 0;
       return {
-        date, scheduled: true, pcs, target,
+        date, scheduled: true, pcs, target, isWorkingDay,
         missing: target > 0 ? pcs < target : pcs <= 0,
         soNumber: active.soNumber, customerName: so?.customers?.customer_name || null, styleName: active.styleName || null,
       };

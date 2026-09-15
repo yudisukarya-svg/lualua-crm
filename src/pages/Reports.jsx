@@ -313,16 +313,19 @@ export default function Reports() {
                               <tr>
                                 {days.map((d) => {
                                   const note = dpmNotes[`${m.id}:${d.date}`];
+                                  const needsNote = d.isWorkingDay && (d.missing || !d.scheduled) && !note;
                                   return (
                                     <td key={d.date}
-                                      onClick={d.scheduled ? () => openNoteDialog(m.id, m.name, d.date) : undefined}
-                                      title={d.scheduled ? `${d.soNumber}${d.customerName ? " · " + d.customerName : ""}${d.styleName ? " · " + d.styleName : ""}${d.target ? ` (target ${d.target}/hari)` : ""}${note ? " — " + note.reason : ""}` : "Not scheduled that day"}
-                                      className={`whitespace-nowrap px-2 py-2 text-center ${d.scheduled ? "cursor-pointer hover:ring-1 hover:ring-primary/40" : ""} ${!d.scheduled ? "text-muted-foreground/50" : d.missing ? "bg-rose-50 font-medium text-rose-700" : "text-foreground"}`}
+                                      onClick={() => openNoteDialog(m.id, m.name, d.date)}
+                                      title={d.scheduled
+                                        ? `${d.soNumber}${d.customerName ? " · " + d.customerName : ""}${d.styleName ? " · " + d.styleName : ""}${d.target ? ` (target ${d.target}/hari)` : ""}${note ? " — " + note.reason : ""}`
+                                        : `Tidak ada jadwal di mesin ini${note ? " — " + note.reason : " — klik untuk isi alasan"}`}
+                                      className={`cursor-pointer whitespace-nowrap px-2 py-2 text-center hover:ring-1 hover:ring-primary/40 ${!d.scheduled ? "text-muted-foreground/50" : d.missing ? "bg-rose-50 font-medium text-rose-700" : "text-foreground"}`}
                                     >
                                       <div className="flex items-center justify-center gap-1">
                                         {d.scheduled ? d.pcs : "—"}
                                         {note && <MessageSquare className="h-3 w-3 shrink-0 text-primary" />}
-                                        {d.missing && !note && <MessageSquarePlus className="h-3 w-3 shrink-0 text-rose-400" />}
+                                        {needsNote && <MessageSquarePlus className="h-3 w-3 shrink-0 text-rose-400" />}
                                       </div>
                                     </td>
                                   );
