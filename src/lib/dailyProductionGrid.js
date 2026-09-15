@@ -28,9 +28,13 @@ function dateRange(startDate, endDate) {
 // board: schedule.board entries ({ blockId, machineId, soId, soNumber, styleName, start, finish })
 //   — used only to know what the board expected to be running (for the
 //   segment labels and the "missing" red flag), never for the qty itself.
+// rawBlocks: raw.blocks — used only to look up each board entry's style_id
+//   (board entries don't carry it) so we can find that style's daily rate.
+// stylesById: raw.styles — needs .knitting_machine (the daily target for a
+//   machine running that style).
 // actualRows: raw po_daily_actuals rows ({ so, tgl, aktual, mesin }).
-// Returns { [machineId]: { machineName, days: [{ date, scheduled, pcs, missing, unattributedElsewhere, soNumber, customerName, styleName }] } }
-export function computeDailyProductionGrid({ machines, board, actualRows, soById, startDate, endDate, calendar }) {
+// Returns { [machineId]: { machineName, days: [{ date, scheduled, pcs, target, missing, soNumber, customerName, styleName }] } }
+export function computeDailyProductionGrid({ machines, board, rawBlocks, stylesById, actualRows, soById, startDate, endDate, calendar }) {
   const days = dateRange(startDate, endDate);
 
   // Real, machine-attributed pcs only — rows with no "mesin" recorded are
@@ -41,6 +45,8 @@ export function computeDailyProductionGrid({ machines, board, actualRows, soById
     const k = `${r.mesin}:${r.tgl}`;
     actualByMachineDate[k] = (actualByMachineDate[k] || 0) + (Number(r.aktual) || 0);
   });
+
+  const styleIdByBlockId = {}; (rawBlocks || []).forEach((b) => { styleIdByBlockId[b.id] = b.style_id; });
 
   const result = {};
   (machines || []).forEach((m) => {
@@ -54,11 +60,13 @@ export function computeDailyProductionGrid({ machines, board, actualRows, soById
         // Nothing scheduled here per the board. If real confirmed pcs exist
         // anyway (unplanned work, or a board change after the fact), still
         // show the true number rather than hiding it — just don't flag it.
-        return { date, scheduled: pcs > 0, pcs, missing: false, soNumber: null, customerName: null, styleName: null };
+        return { date, scheduled: pcs > 0, pcs, target: 0, missing: false, soNumber: null, customerName: null, styleName: null };
       }
       const so = soById[active.soId];
+      const target = Number(stylesById?.[styleIdByBlockId[active.blockId]]?.knitting_machine) || 0;
       return {
-        date, scheduled: true, pcs, missing: pcs <= 0,
+        date, scheduled: true, pcs, target,
+        missing: target > 0 ? pcs < target : pcs <= 0,
         soNumber: active.soNumber, customerName: so?.customers?.customer_name || null, styleName: active.styleName || null,
       };
     });

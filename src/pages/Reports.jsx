@@ -2,14 +2,17 @@ import { useState } from "react";
 import { useReports } from "@/hooks/useReports";
 import { useSchedule } from "@/hooks/useSchedule";
 import { useDailyActuals } from "@/hooks/useDailyActuals";
+import { useMachineDailyNotes } from "@/hooks/useMachineDailyNotes";
 import { STAGE_LABELS, makeCalendar } from "@/lib/scheduler";
 import { computeDailyProductionGrid, segmentsFromDays } from "@/lib/dailyProductionGrid";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory, ChevronLeft, ChevronRight, MessageSquare, MessageSquarePlus } from "lucide-react";
 import { humanize, formatDate } from "@/lib/utils";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -41,17 +44,36 @@ export default function Reports() {
     return d.toISOString().slice(0, 10);
   })();
   const { rows: dailyActualRows, loading: dpmLoading } = useDailyActuals(dpmStart, dpmEnd);
+  const { notes: dpmNotes, saveNote: saveDpmNote } = useMachineDailyNotes(dpmStart, dpmEnd);
+  const [noteDialog, setNoteDialog] = useState({ open: false, machineId: null, machineName: "", date: null, reason: "", saving: false });
   const dpmCalendar = makeCalendar({ sundayOff: raw?.settings?.sunday_off ?? true, saturdayOff: raw?.settings?.saturday_off ?? false, holidays: raw?.holidays || [] });
   const soById = {}; (raw?.salesOrders || []).forEach((so) => { soById[so.id] = so; });
   const dpmGrid = computeDailyProductionGrid({
-    machines: raw?.machines || [], board: schedule?.board || [], actualRows: dailyActualRows,
-    soById, startDate: dpmStart, endDate: dpmEnd, calendar: dpmCalendar,
+    machines: raw?.machines || [], board: schedule?.board || [], rawBlocks: raw?.blocks || [], stylesById: raw?.styles || {},
+    actualRows: dailyActualRows, soById, startDate: dpmStart, endDate: dpmEnd, calendar: dpmCalendar,
   });
   const dpmDates = Object.values(dpmGrid)[0]?.days.map((d) => d.date) || [];
   const shiftDpmWindow = (weeks) => {
     const d = new Date(dpmStart + "T00:00:00"); d.setDate(d.getDate() + weeks * 14);
     setDpmStart(d.toISOString().slice(0, 10));
   };
+  const openNoteDialog = (machineId, machineName, date) => {
+    const existing = dpmNotes[`${machineId}:${date}`];
+    setNoteDialog({ open: true, machineId, machineName, date, reason: existing?.reason || "", saving: false });
+  };
+  const submitNote = async () => {
+    if (!noteDialog.reason.trim()) return;
+    setNoteDialog((s) => ({ ...s, saving: true }));
+    try {
+      await saveDpmNote(noteDialog.machineId, noteDialog.date, noteDialog.reason.trim());
+      toast({ title: "Catatan tersimpan" });
+      setNoteDialog({ open: false, machineId: null, machineName: "", date: null, reason: "", saving: false });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Gagal simpan", description: e.message });
+      setNoteDialog((s) => ({ ...s, saving: false }));
+    }
+  };
+
 
   const prodOrders = schedule?.orders ?? [];
   const prodCapacity = schedule?.capacity ?? [];
@@ -289,14 +311,22 @@ export default function Reports() {
                             </thead>
                             <tbody>
                               <tr>
-                                {days.map((d) => (
-                                  <td key={d.date}
-                                    title={d.scheduled ? `${d.soNumber}${d.customerName ? " · " + d.customerName : ""}${d.styleName ? " · " + d.styleName : ""}` : "Not scheduled that day"}
-                                    className={`whitespace-nowrap px-2 py-2 text-center ${!d.scheduled ? "text-muted-foreground/50" : d.missing ? "bg-rose-50 font-medium text-rose-700" : "text-foreground"}`}
-                                  >
-                                    {d.scheduled ? (d.missing ? "0" : d.pcs) : "—"}
-                                  </td>
-                                ))}
+                                {days.map((d) => {
+                                  const note = dpmNotes[`${m.id}:${d.date}`];
+                                  return (
+                                    <td key={d.date}
+                                      onClick={d.scheduled ? () => openNoteDialog(m.id, m.name, d.date) : undefined}
+                                      title={d.scheduled ? `${d.soNumber}${d.customerName ? " · " + d.customerName : ""}${d.styleName ? " · " + d.styleName : ""}${d.target ? ` (target ${d.target}/hari)` : ""}${note ? " — " + note.reason : ""}` : "Not scheduled that day"}
+                                      className={`whitespace-nowrap px-2 py-2 text-center ${d.scheduled ? "cursor-pointer hover:ring-1 hover:ring-primary/40" : ""} ${!d.scheduled ? "text-muted-foreground/50" : d.missing ? "bg-rose-50 font-medium text-rose-700" : "text-foreground"}`}
+                                    >
+                                      <div className="flex items-center justify-center gap-1">
+                                        {d.scheduled ? d.pcs : "—"}
+                                        {note && <MessageSquare className="h-3 w-3 shrink-0 text-primary" />}
+                                        {d.missing && !note && <MessageSquarePlus className="h-3 w-3 shrink-0 text-rose-400" />}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
                               </tr>
                             </tbody>
                           </table>
@@ -380,6 +410,27 @@ export default function Reports() {
           </div>
         </div>
       )}
+
+      <Dialog open={noteDialog.open} onOpenChange={(o) => setNoteDialog((s) => ({ ...s, open: o }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Catatan — {noteDialog.machineName}, {noteDialog.date ? formatDate(noteDialog.date) : ""}</DialogTitle>
+            <DialogDescription>Apa yang terjadi hari itu? (dicek langsung ke operator)</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Contoh: mesin macet 3 jam, operator izin sakit, benang telat datang, dll."
+            value={noteDialog.reason}
+            onChange={(e) => setNoteDialog((s) => ({ ...s, reason: e.target.value }))}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteDialog((s) => ({ ...s, open: false }))}>Batal</Button>
+            <Button onClick={submitNote} disabled={noteDialog.saving || !noteDialog.reason.trim()}>
+              {noteDialog.saving ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
