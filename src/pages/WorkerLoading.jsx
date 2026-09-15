@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, Wand2 } from "lucide-react";
+import { Users, Wand2, CalendarClock } from "lucide-react";
 import { useSchedule } from "@/hooks/useSchedule";
 import { STAGES, STAGE_LABELS } from "@/lib/scheduler";
 import PageHeader from "@/components/PageHeader";
@@ -8,13 +8,26 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { formatDate, todayLocalStr } from "@/lib/utils";
+import { formatDate, todayLocalStr, addDaysLocal } from "@/lib/utils";
 
 const POOLS = [
   ["knitting_machine", "Knitting — Machine"], ["knitting_manual", "Knitting — Manual"],
   ["linking", "Linking"], ["finishing", "Finishing"], ["steam", "Steam"],
   ["label", "Label Sewing"], ["qc", "Final QC"], ["packing", "Packing"],
 ];
+
+// The first day (from today onward) this pool has NO current work at all —
+// i.e. when it's genuinely clear to start something brand new, not just
+// "has a spare slot today". Scans the whole plan for the LAST day this pool
+// is still busy, then reports the day right after that.
+function freeFromDate(dayList, todayStr, getUsed) {
+  let lastBusy = null;
+  dayList.forEach((d) => {
+    if (d.date < todayStr) return;
+    if (getUsed(d) > 0) { if (!lastBusy || d.date > lastBusy) lastBusy = d.date; }
+  });
+  return lastBusy ? addDaysLocal(lastBusy, 1) : todayStr;
+}
 
 export default function WorkerLoading() {
   const { schedule, loading, runCapacityWhatIf } = useSchedule();
@@ -50,9 +63,46 @@ export default function WorkerLoading() {
   // before/after finish per SO for the what-if
   const beforeById = {}; schedule.orders.forEach((o) => { beforeById[o.id] = o; });
 
+  // "When can I start again" — Manual Knitting specifically (Machine
+  // knitting already has its own "Free from" per machine on the Machine
+  // Board timeline, so it isn't duplicated here), plus every other
+  // worker-pool stage for the same view in one place.
+  const freeFromRows = [
+    { key: "manual-knit", label: "Rajut Manual", getUsed: (d) => d.util?.knitting?.pools?.manual?.used || 0, todayUsed: dayEntry?.util?.knitting?.pools?.manual?.used, todayAvail: dayEntry?.util?.knitting?.pools?.manual?.avail },
+    ...STAGES.filter((s) => s !== "knitting").map((s) => ({
+      key: s, label: STAGE_LABELS[s],
+      getUsed: (d) => d.util?.[s]?.workersUsed || 0,
+      todayUsed: dayEntry?.util?.[s]?.workersUsed, todayAvail: dayEntry?.util?.[s]?.workersAvail,
+    })),
+  ];
+
   return (
     <>
       <PageHeader title="Worker loading" subtitle="Who is working on what each day, and how many workers are free" />
+
+      <Card className="mb-4 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">Kapan mulai lagi (per tahap)</h3>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {freeFromRows.map((r) => {
+            const from = freeFromDate(dayList, today, r.getUsed);
+            const isFreeNow = from <= today;
+            return (
+              <div key={r.key} className="rounded-md border p-3">
+                <p className="text-xs font-medium text-muted-foreground">{r.label}</p>
+                <p className={`text-sm font-semibold ${isFreeNow ? "text-emerald-600" : "text-foreground"}`}>
+                  {isFreeNow ? "Bebas sekarang" : `Bebas mulai ${formatDate(from)}`}
+                </p>
+                {r.todayAvail != null && (
+                  <p className="text-xs text-muted-foreground">{Math.max(0, r.todayAvail - (r.todayUsed || 0))} dari {r.todayAvail} bebas hari ini</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       <div className="mb-4 flex items-end gap-3">
         <div className="space-y-1.5">
