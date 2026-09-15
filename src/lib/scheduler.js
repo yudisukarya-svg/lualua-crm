@@ -59,7 +59,7 @@ function comparator(mode) {
 
 const zero = () => Object.fromEntries(STAGES.map((s) => [s, 0]));
 
-export function computeSchedule({ jobs, resources, settings = {}, holidays = [], today, priorityMode = "fifo", horizonDays = 600, machines = [], blocks = [], reservations = [] }) {
+export function computeSchedule({ jobs, resources, settings = {}, holidays = [], today, priorityMode = "fifo", horizonDays = 600, machines = [], blocks = [], reservations = [], extraKnittingCredit = {} }) {
   const calendar = makeCalendar({ sundayOff: settings.sunday_off ?? true, saturdayOff: settings.saturday_off ?? false, holidays });
 
   const boardMode = Array.isArray(blocks) && blocks.length > 0 && Array.isArray(machines) && machines.length > 0;
@@ -78,12 +78,20 @@ export function computeSchedule({ jobs, resources, settings = {}, holidays = [],
   // must count toward completed.knitting from day one, or downstream stages
   // (linking, finishing, ...) would wait on knitting that has, in reality,
   // already happened. "hold" blocks are the opposite: genuinely paused, so
-  // they contribute nothing yet.
+  // they contribute nothing yet. extraKnittingCredit adds the same kind of
+  // credit for still-ACTIVE blocks that already have some real confirmed
+  // production (from PO Tukang) even though they're not fully done — without
+  // this, reducing an active block's qty to "remaining" would make the
+  // simulation forget the portion already produced, and the job would never
+  // reach its full original quantity.
   const doneKnittedByKey = {};
   (blocks || []).forEach((b) => {
     if (b.status !== "done") return;
     const k = `${b.sales_order_id}:${b.style_id}`;
     doneKnittedByKey[k] = (doneKnittedByKey[k] || 0) + (Number(b.qty) || 0);
+  });
+  Object.entries(extraKnittingCredit || {}).forEach(([k, v]) => {
+    doneKnittedByKey[k] = (doneKnittedByKey[k] || 0) + (Number(v) || 0);
   });
 
   const live = jobs

@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { computeSchedule } from "@/lib/scheduler";
+import { poTukangClient } from "@/lib/supabasePoTukang";
+import { computeSchedule, makeCalendar } from "@/lib/scheduler";
+import { computeBlockActuals } from "@/lib/dynamicBoard";
 import { resourcesToMap } from "@/hooks/useResources";
 import { todayLocalStr } from "@/lib/utils";
 
@@ -96,6 +98,72 @@ export function useSchedule() {
     return () => clearInterval(id);
   }, [load]);
 
+  // Real knitting pace (from PO Tukang, cross-project) feeds into the
+  // SHARED forecast so every page reflects reality, not just the static
+  // plan — this is what previously only Machine Board itself knew about.
+  // Deliberately NOT on the 2-minute poll: it's a separate project, so
+  // refreshing it that often would add real network cost for something
+  // that doesn't change minute to minute. Fetched once when data first
+  // loads, plus on demand via refetchDynamic() (a manual "Refresh" button).
+  const [dynamicInfo, setDynamicInfo] = useState({});
+  const [dynamicLoading, setDynamicLoading] = useState(false);
+  const dynamicLoadedRef = useRef(false);
+
+  const loadDynamic = useCallback(async () => {
+    if (!raw) return;
+    const soById = {}; raw.salesOrders.forEach((so) => { soById[so.id] = so; });
+    const soNumbers = [...new Set(raw.blocks.map((b) => soById[b.sales_order_id]?.so_number).filter(Boolean))];
+    if (soNumbers.length === 0) { setDynamicInfo({}); return; }
+    setDynamicLoading(true);
+    try {
+      const { data, error } = await poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").in("so", soNumbers);
+      if (error) throw error;
+      const calendar = makeCalendar({ sundayOff: raw.settings?.sunday_off ?? true, saturdayOff: raw.settings?.saturday_off ?? false, holidays: raw.holidays || [] });
+      const enrichedBlocks = raw.blocks.map((b) => ({
+        ...b,
+        _soNumber: soById[b.sales_order_id]?.so_number || null,
+        _planRate: raw.styles?.[b.style_id]?.knitting_machine || 0,
+      }));
+      setDynamicInfo(computeBlockActuals({ blocks: enrichedBlocks, stylesById: raw.styles, actualRows: data || [], calendar, today: todayLocalStr() }));
+    } catch {
+      // leave dynamicInfo as-is — the schedule just falls back to the static plan
+    } finally {
+      setDynamicLoading(false);
+    }
+  }, [raw]);
+
+  useEffect(() => {
+    if (raw && !dynamicLoadedRef.current) {
+      dynamicLoadedRef.current = true;
+      loadDynamic();
+    }
+  }, [raw, loadDynamic]);
+
+  // raw.blocks with active blocks' qty swapped for real remaining qty where
+  // we have PO Tukang data for them — this is what actually makes the
+  // forecast reflect reality. A block with no real data yet keeps its
+  // planned qty (falls back to the static plan, same as always).
+  const effectiveBlocks = raw ? raw.blocks.map((b) => {
+    if ((b.status || "active") !== "active") return b;
+    const info = dynamicInfo[b.id];
+    if (!info) return b;
+    return { ...b, qty: Math.max(0, Math.ceil(info.remainingQty)) };
+  }) : [];
+
+  // The portion of an active block's qty already confirmed by PO Tukang —
+  // reducing the block's own qty to "remaining" (above) only tells the
+  // simulation about future capacity; without this credit the already-
+  // produced portion would be forgotten and the job would never reach its
+  // full original quantity.
+  const extraKnittingCredit = {};
+  (raw?.blocks || []).forEach((b) => {
+    if ((b.status || "active") !== "active") return;
+    const info = dynamicInfo[b.id];
+    if (!info) return;
+    const k = `${b.sales_order_id}:${b.style_id}`;
+    extraKnittingCredit[k] = (extraKnittingCredit[k] || 0) + info.deliveredQty;
+  });
+
   const today = todayLocalStr();
 
   const schedule = useMemo(() => {
@@ -104,9 +172,9 @@ export function useSchedule() {
     return computeSchedule({
       jobs, resources: raw.resources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
-      machines: raw.machines, blocks: raw.blocks, reservations: raw.reservations,
+      machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
     });
-  }, [raw, today]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit]);
 
   // What-if: recompute with a single SO's earliest start overridden.
   const runWhatIf = useCallback((soId, earliestStart, priorityMode) => {
@@ -116,7 +184,7 @@ export function useSchedule() {
     const res = computeSchedule({
       jobs, resources: raw.resources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: priorityMode || raw.settings.priority_mode || "fifo",
-      machines: raw.machines, blocks: raw.blocks, reservations: raw.reservations,
+      machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
     });
     return res.orders.find((o) => o.id === soId) || null;
   }, [raw, today]);
@@ -131,7 +199,7 @@ export function useSchedule() {
     return computeSchedule({
       jobs, resources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
-      machines: raw.machines, blocks: raw.blocks, reservations: raw.reservations,
+      machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
     });
   }, [raw, today]);
 
@@ -142,9 +210,12 @@ export function useSchedule() {
     return computeSchedule({
       jobs, resources: raw.resources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
-      machines: raw.machines, blocks: raw.blocks, reservations: raw.reservations,
+      machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
     });
   }, [raw, today]);
 
-  return { schedule, raw, loading, refetch: load, runWhatIf, runCapacityWhatIf, runMachineWhatIf, runKnittingWhatIf: runMachineWhatIf };
+  return {
+    schedule, raw, loading, refetch: load, runWhatIf, runCapacityWhatIf, runMachineWhatIf, runKnittingWhatIf: runMachineWhatIf,
+    dynamic: dynamicInfo, dynamicLoading, refetchDynamic: loadDynamic,
+  };
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, Wand2, CalendarClock } from "lucide-react";
+import { Users, Wand2, CalendarClock, RefreshCw, ListOrdered } from "lucide-react";
 import { useSchedule } from "@/hooks/useSchedule";
 import { STAGES, STAGE_LABELS } from "@/lib/scheduler";
 import PageHeader from "@/components/PageHeader";
@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { formatDate, todayLocalStr, addDaysLocal } from "@/lib/utils";
 
 const POOLS = [
@@ -30,10 +31,12 @@ function freeFromDate(dayList, todayStr, getUsed) {
 }
 
 export default function WorkerLoading() {
-  const { schedule, loading, runCapacityWhatIf } = useSchedule();
+  const { schedule, raw, loading, runCapacityWhatIf, refetch, refetchDynamic, dynamicLoading } = useSchedule();
   const [date, setDate] = useState("");
   const [extra, setExtra] = useState({});
   const [whatIf, setWhatIf] = useState(null);
+  const [tab, setTab] = useState("util");
+  const [refreshing, setRefreshing] = useState(false);
 
   const today = todayLocalStr();
   const dayList = schedule?.daily ?? [];
@@ -76,10 +79,36 @@ export default function WorkerLoading() {
     })),
   ];
 
+  // Today's per-stage queue, already in priority order (the scheduler
+  // processes `waiting` jobs in priority order each day, and alloc entries
+  // are pushed in that same order) — this is literal guidance for "work
+  // these in this order today", not just a utilization number.
+  const soById = {}; (raw?.salesOrders || []).forEach((so) => { soById[so.id] = so; });
+  const todayEntry = dayList.find((d) => d.date === today) || null;
+  const stageQueues = STAGES.filter((s) => s !== "knitting").map((stage) => ({
+    stage, label: STAGE_LABELS[stage],
+    rows: (todayEntry?.util?.[stage]?.alloc || []).map((a) => ({
+      ...a, dueDate: soById[a.soId]?.due_date || null, customerName: soById[a.soId]?.customers?.customer_name || null,
+    })),
+  }));
+
+  const manualRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([refetch(), refetchDynamic()]); }
+    finally { setRefreshing(false); }
+  };
+
   return (
     <>
       <PageHeader title="Worker loading" subtitle="Who is working on what each day, and how many workers are free" />
 
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="util">Utilization</TabsTrigger>
+          <TabsTrigger value="queue">Antrean hari ini</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="util">
       <Card className="mb-4 p-4">
         <div className="mb-3 flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-primary" />
@@ -198,6 +227,64 @@ export default function WorkerLoading() {
           </div>
         )}
       </Card>
+        </TabsContent>
+
+        <TabsContent value="queue">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Urutan prioritas untuk hari ini ({formatDate(today)}) — kerjakan dari atas ke bawah di tiap tahap. Data kecepatan aktual dari PO Tukang tidak auto-refresh (supaya hemat data) — klik Refresh untuk data terbaru.
+            </p>
+            <Button variant="outline" size="sm" onClick={manualRefresh} disabled={refreshing || dynamicLoading}>
+              <RefreshCw className={`h-4 w-4 ${refreshing || dynamicLoading ? "animate-spin" : ""}`} /> Refresh
+            </Button>
+          </div>
+          {!todayEntry ? (
+            <Card className="p-6"><p className="text-sm text-muted-foreground">Tidak ada produksi terjadwal hari ini.</p></Card>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {stageQueues.map(({ stage, label, rows }) => (
+                <Card key={stage} className="p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <ListOrdered className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold">{label}</h3>
+                  </div>
+                  {rows.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Tidak ada antrean di tahap ini hari ini.</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-muted-foreground">
+                          <th className="pb-1 pr-2">#</th>
+                          <th className="pb-1 pr-2">SO</th>
+                          <th className="pb-1 pr-2">Style</th>
+                          <th className="pb-1 pr-2 text-right">Pcs</th>
+                          <th className="pb-1 pr-2 text-right">Pekerja</th>
+                          <th className="pb-1 text-right">Deadline</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={i} className="border-t">
+                            <td className="py-1.5 pr-2 text-muted-foreground">{i + 1}</td>
+                            <td className="py-1.5 pr-2">
+                              <span className="font-medium">{r.soNumber}</span>
+                              {r.customerName && <span className="block text-xs text-muted-foreground">{r.customerName}</span>}
+                            </td>
+                            <td className="py-1.5 pr-2 text-muted-foreground">{r.styleName}</td>
+                            <td className="py-1.5 pr-2 text-right">{r.pieces}</td>
+                            <td className="py-1.5 pr-2 text-right text-muted-foreground">{r.count}</td>
+                            <td className="py-1.5 text-right text-muted-foreground">{r.dueDate ? formatDate(r.dueDate) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </>
   );
 }
