@@ -12,13 +12,15 @@
 // unattributed handover will show up as a red "0" even though work did
 // happen — the gap is real and worth surfacing, not papering over.
 
+import { addDaysLocal } from "./utils.js";
+
 function dateRange(startDate, endDate) {
   const out = [];
-  let d = new Date(startDate + "T00:00:00");
-  const end = new Date(endDate + "T00:00:00");
-  while (d <= end) {
-    out.push(d.toISOString().slice(0, 10));
-    d = new Date(d.getTime() + 86400000);
+  let d = startDate;
+  let guard = 0;
+  while (d <= endDate && guard++ < 400) {
+    out.push(d);
+    d = addDaysLocal(d, 1);
   }
   return out;
 }
@@ -52,7 +54,7 @@ export function computeDailyProductionGrid({ machines, board, rawBlocks, stylesB
   (machines || []).forEach((m) => {
     const blocksForMachine = (board || []).filter((b) => b.machineId === m.id && b.start && b.finish);
     const dayCells = days.map((date) => {
-      const isWorkingDay = calendar ? calendar.isWorkingDay(new Date(date + "T00:00:00")) : true;
+      const isWorkingDay = calendar ? calendar.isWorkingDay(new Date(date + "T00:00:00Z")) : true;
       const active = isWorkingDay ? blocksForMachine.find((b) => date >= b.start && date <= b.finish) : null;
       const pcs = actualByMachineDate[`${m.name}:${date}`] || 0;
 
@@ -99,5 +101,5 @@ export function segmentsFromDays(days) {
 }
 
 function prevDate(dateStr) {
-  return new Date(new Date(dateStr + "T00:00:00").getTime() - 86400000).toISOString().slice(0, 10);
+  return addDaysLocal(dateStr, -1);
 }

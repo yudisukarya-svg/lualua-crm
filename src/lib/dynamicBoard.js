@@ -69,7 +69,7 @@ function elapsedWorkingDays(calendar, start, today) {
 }
 
 function addWorkingDays(calendar, fromDate, n) {
-  let d = calendar.next(new Date(fromDate + "T00:00:00"));
+  let d = calendar.next(new Date(fromDate + "T00:00:00Z"));
   let remaining = n;
   while (remaining > 1) {
     d = calendar.next(new Date(d.getTime() + 86400000));

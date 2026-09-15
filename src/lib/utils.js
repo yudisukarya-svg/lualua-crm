@@ -1,6 +1,24 @@
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+// Safe local-calendar-date helpers — deliberately never round-trip through
+// toISOString()/UTC. `new Date(dateStr + "T00:00:00").toISOString()` silently
+// shifts the date backward by one day for anyone in a timezone ahead of UTC
+// (e.g. Bali, UTC+8) — local midnight of a date is still the PREVIOUS day in
+// UTC, so toISOString() reports the wrong calendar date. These helpers stay
+// entirely in local-calendar-component arithmetic (getFullYear/getMonth/
+// getDate), so they're correct regardless of the browser's timezone.
+export function toLocalDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+export function addDaysLocal(dateStr, n) {
+  const [y, m, day] = dateStr.split("-").map(Number);
+  return toLocalDateStr(new Date(y, m - 1, day + n));
+}
+export function todayLocalStr() {
+  return toLocalDateStr(new Date());
+}
+
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }

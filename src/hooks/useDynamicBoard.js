@@ -3,6 +3,7 @@ import { poTukangClient } from "@/lib/supabasePoTukang";
 import { completeBlock } from "@/hooks/useMachines";
 import { computeBlockActuals } from "@/lib/dynamicBoard";
 import { makeCalendar } from "@/lib/scheduler";
+import { todayLocalStr } from "@/lib/utils";
 
 // Tracks actual knitting delivery (from PO Tukang) against active/hold
 // machine blocks, so the board can show real remaining qty, pace, and ETA
@@ -43,7 +44,7 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
 
   useEffect(() => { load(); }, [load]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalStr();
   const calendar = makeCalendar({ sundayOff: settings?.sunday_off ?? true, saturdayOff: settings?.saturday_off ?? false, holidays: holidays || [] });
 
   const dynamic = computeBlockActuals({ blocks: blocks || [], stylesById, actualRows, calendar, today });

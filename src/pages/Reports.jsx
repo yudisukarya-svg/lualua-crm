@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory, ChevronLeft, ChevronRight, MessageSquare, MessageSquarePlus } from "lucide-react";
-import { humanize, formatDate } from "@/lib/utils";
+import { humanize, formatDate, addDaysLocal, todayLocalStr } from "@/lib/utils";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, LineChart, Line,
@@ -35,14 +35,8 @@ export default function Reports() {
   const r = useReports();
   const { schedule, raw } = useSchedule();
   const { toast } = useToast();
-  const [dpmStart, setDpmStart] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
-  });
-  const dpmEnd = (() => {
-    const d = new Date(dpmStart + "T00:00:00"); d.setDate(d.getDate() + 13);
-    return d.toISOString().slice(0, 10);
-  })();
+  const [dpmStart, setDpmStart] = useState(() => addDaysLocal(todayLocalStr(), -6));
+  const dpmEnd = addDaysLocal(dpmStart, 13);
   const { rows: dailyActualRows, loading: dpmLoading } = useDailyActuals(dpmStart, dpmEnd);
   const { notes: dpmNotes, saveNote: saveDpmNote } = useMachineDailyNotes(dpmStart, dpmEnd);
   const [noteDialog, setNoteDialog] = useState({ open: false, machineId: null, machineName: "", date: null, reason: "", saving: false });
@@ -54,8 +48,7 @@ export default function Reports() {
   });
   const dpmDates = Object.values(dpmGrid)[0]?.days.map((d) => d.date) || [];
   const shiftDpmWindow = (weeks) => {
-    const d = new Date(dpmStart + "T00:00:00"); d.setDate(d.getDate() + weeks * 14);
-    setDpmStart(d.toISOString().slice(0, 10));
+    setDpmStart(addDaysLocal(dpmStart, weeks * 14));
   };
   const openNoteDialog = (machineId, machineName, date) => {
     const existing = dpmNotes[`${machineId}:${date}`];

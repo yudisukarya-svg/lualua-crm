@@ -10,7 +10,7 @@ import EmptyState from "@/components/EmptyState";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/utils";
+import { formatDate, todayLocalStr } from "@/lib/utils";
 
 export default function KnittingPlanning() {
   const { raw, schedule, loading, refetch, runKnittingWhatIf } = useSchedule();
@@ -19,7 +19,7 @@ export default function KnittingPlanning() {
   const [picks, setPicks] = useState({});
   const [busyKey, setBusyKey] = useState(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalStr();
 
   const jobs = useMemo(() => {
     if (!raw) return [];

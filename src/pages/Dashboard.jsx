@@ -10,7 +10,7 @@ import { STAGE_LABELS } from "@/lib/scheduler";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatDate, formatDateTime, bytes } from "@/lib/utils";
+import { formatDate, formatDateTime, bytes, todayLocalStr, addDaysLocal } from "@/lib/utils";
 
 function Stat({ icon: Icon, label, value, tone = "text-primary", to }) {
   const body = (
@@ -38,8 +38,8 @@ export default function Dashboard() {
 
   const archivedSoIds = new Set((raw?.salesOrders || []).filter((so) => so.archived).map((so) => so.id));
   const orders = (schedule?.orders ?? []).filter((o) => !archivedSoIds.has(o.id));
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const todayStr = todayLocalStr();
+  const in7 = addDaysLocal(todayStr, 7);
   const lateOrders = orders.filter((o) => o.delayRisk);
   const dueSoon = orders.filter((o) => o.dueDate && o.dueDate >= todayStr && o.dueDate <= in7);
   const laggingDueSoon = dueSoon.filter((o) => !o.delayRisk && (o.percent ?? 100) < 50);

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { poTukangClient } from "@/lib/supabasePoTukang";
 import { matchStyleId } from "@/lib/dynamicBoard";
 import { makeCalendar } from "@/lib/scheduler";
+import { todayLocalStr, addDaysLocal } from "@/lib/utils";
 
 const STALE_WORKING_DAYS = 3; // flag an active block if nothing's been confirmed in this many working days
 
@@ -32,7 +33,7 @@ export function useAttentionItems({ raw }) {
     return () => { cancelled = true; };
   }, [soNumbersKey]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalStr();
   const calendar = makeCalendar({ sundayOff: raw?.settings?.sunday_off ?? true, saturdayOff: raw?.settings?.saturday_off ?? false, holidays: raw?.holidays || [] });
   const soById = {}; (raw?.salesOrders || []).forEach((so) => { soById[so.id] = so; });
 
@@ -68,7 +69,7 @@ export function useAttentionItems({ raw }) {
     .filter((s) => s.calendarDaysPending == null || s.calendarDaysPending <= 30)
     .sort((a, b) => (b.daysPending || 0) - (a.daysPending || 0));
 
-  const in3 = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const in3 = addDaysLocal(today, 3);
   const approvalNeeded = samples
     .filter((s) => !s.pending && (!s.tgl_approval || s.tgl_approval === "") && s.deadline && s.deadline <= in3)
     .sort((a, b) => (a.deadline || "").localeCompare(b.deadline || ""));

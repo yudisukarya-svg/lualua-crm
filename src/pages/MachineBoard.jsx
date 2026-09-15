@@ -5,6 +5,7 @@ import { useSchedule, buildJobs } from "@/hooks/useSchedule";
 import { useMachines, autoFillBoard, moveBlock, removeBlock, setMachineActive, addBlock, setBlockSeq, splitBlock, addReservation, removeReservation, completeBlock, holdBlock, resumeBlock } from "@/hooks/useMachines";
 import { useDynamicBoard } from "@/hooks/useDynamicBoard";
 import { computeSchedule } from "@/lib/scheduler";
+import { todayLocalStr, addDaysLocal } from "@/lib/utils";
 import { printMachineBoard } from "@/lib/printPlan";
 import MachineTimeline from "@/components/MachineTimeline";
 import { useToast } from "@/components/ui/use-toast";
@@ -30,21 +31,14 @@ export default function MachineBoard() {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [splitState, setSplitState] = useState({ open: false, block: null, qty: "", target: "", startAfter: "" });
-  const [resState, setResState] = useState({ open: false, machine: null, date: new Date().toISOString().slice(0, 10), hours: 2, label: "", so_number: "", zoho_salesorder_id: "", style_name: "" });
+  const [resState, setResState] = useState({ open: false, machine: null, date: todayLocalStr(), hours: 2, label: "", so_number: "", zoho_salesorder_id: "", style_name: "" });
   const [soPicker, setSoPicker] = useState({ open: false, list: [], loading: false, q: "", step: "so", so: null, styles: [] });
   const [holdDialog, setHoldDialog] = useState({ open: false, block: null, reason: "" });
   const [boardTab, setBoardTab] = useState("board");
-  const [completedStart, setCompletedStart] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 13);
-    return d.toISOString().slice(0, 10);
-  });
-  const completedEnd = (() => {
-    const d = new Date(completedStart + "T00:00:00"); d.setDate(d.getDate() + 13);
-    return d.toISOString().slice(0, 10);
-  })();
+  const [completedStart, setCompletedStart] = useState(() => addDaysLocal(todayLocalStr(), -13));
+  const completedEnd = addDaysLocal(completedStart, 13);
   const shiftCompletedWindow = (weeks) => {
-    const d = new Date(completedStart + "T00:00:00"); d.setDate(d.getDate() + weeks * 14);
-    setCompletedStart(d.toISOString().slice(0, 10));
+    setCompletedStart(addDaysLocal(completedStart, weeks * 14));
   };
 
   // Enrich blocks with the fields the dynamic-tracking hook needs (SO number
@@ -76,7 +70,7 @@ export default function MachineBoard() {
   const dynamicBoardResult = raw ? computeSchedule({
     jobs: buildJobs(raw.salesOrders, raw.styles),
     resources: raw.resources, settings: raw.settings, holidays: raw.holidays,
-    today: new Date().toISOString().slice(0, 10), priorityMode: raw.settings?.priority_mode || "fifo",
+    today: todayLocalStr(), priorityMode: raw.settings?.priority_mode || "fifo",
     machines: raw.machines,
     blocks: enrichedBlocks
       .filter((b) => (b.status || "active") === "active")
@@ -392,7 +386,7 @@ export default function MachineBoard() {
                                   <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === queue.length - 1} title="Move down" onClick={() => reorder(queue, idx, 1)}><ChevronDown className="h-3.5 w-3.5" /></Button>
                                   {otherMachines.length > 0 && b.qty > 1 ? (
                                     <Button variant="ghost" size="icon" className="h-6 w-6" title="Split to another machine"
-                                      onClick={() => setSplitState({ open: true, block: b, qty: Math.floor(b.qty / 2), target: otherMachines[0].id, startAfter: new Date().toISOString().slice(0, 10) })}>
+                                      onClick={() => setSplitState({ open: true, block: b, qty: Math.floor(b.qty / 2), target: otherMachines[0].id, startAfter: todayLocalStr() })}>
                                       <Split className="h-3.5 w-3.5" />
                                     </Button>
                                   ) : <span />}

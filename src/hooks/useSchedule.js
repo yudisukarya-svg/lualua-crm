@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { computeSchedule } from "@/lib/scheduler";
 import { resourcesToMap } from "@/hooks/useResources";
+import { todayLocalStr } from "@/lib/utils";
 
 const RATE_FIELDS = ["knitting_manual", "knitting_machine", "linking", "finishing", "steam", "label", "qc", "packing"];
 
@@ -80,7 +81,7 @@ export function useSchedule() {
 
   useEffect(() => { load(); }, [load]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalStr();
 
   const schedule = useMemo(() => {
     if (!raw) return null;

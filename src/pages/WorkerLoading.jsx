@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/utils";
+import { formatDate, todayLocalStr } from "@/lib/utils";
 
 const POOLS = [
   ["knitting_machine", "Knitting — Machine"], ["knitting_manual", "Knitting — Manual"],
@@ -22,7 +22,7 @@ export default function WorkerLoading() {
   const [extra, setExtra] = useState({});
   const [whatIf, setWhatIf] = useState(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalStr();
   const dayList = schedule?.daily ?? [];
 
   // default day: today if present, else first working day in the plan
