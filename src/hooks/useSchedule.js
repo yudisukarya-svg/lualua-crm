@@ -81,6 +81,21 @@ export function useSchedule() {
 
   useEffect(() => { load(); }, [load]);
 
+  // A tab can be left open for hours (common on production-floor devices).
+  // Without this, its view of machine_blocks/sales_orders/etc. only ever
+  // updates from a LOCAL action (a button click that calls refetch()) —
+  // changes made from any OTHER session (another tab, another device)
+  // never arrive until someone manually reloads. That staleness is
+  // harmless for most pages, but dangerous for anything that acts
+  // automatically on this data (e.g. Machine Board's dynamic-tracking
+  // auto-complete) — a decision made from hours-old data can be wrong even
+  // though the logic itself is correct. Poll periodically so the window is
+  // never more than a couple of minutes.
+  useEffect(() => {
+    const id = setInterval(() => { load(); }, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [load]);
+
   const today = todayLocalStr();
 
   const schedule = useMemo(() => {

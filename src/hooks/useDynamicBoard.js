@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { supabase } from "@/lib/supabase";
 import { poTukangClient } from "@/lib/supabasePoTukang";
 import { completeBlock } from "@/hooks/useMachines";
 import { computeBlockActuals } from "@/lib/dynamicBoard";
@@ -52,6 +53,13 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
   // Auto-complete: any ACTIVE (not already hold/done) block whose remaining
   // qty has hit 0 gets marked done, same as a manual click on the checkmark
   // — this just fires it automatically instead of waiting for a person.
+  //
+  // Before actually writing, this re-verifies against a FRESH, targeted
+  // query — not the `blocks`/`actualRows` this hook was handed, which can
+  // be stale if the tab has been open a while and something changed
+  // elsewhere (another session split this block's sibling, added a new
+  // one, etc.). A destructive write like this must be correct even if the
+  // page's cached view of the world isn't.
   useEffect(() => {
     Object.entries(dynamic).forEach(([blockId, info]) => {
       const block = (blocks || []).find((b) => b.id === blockId);
@@ -59,12 +67,30 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
       if (info.remainingQty > 0) return;
       if (completingRef.current.has(blockId)) return;
       completingRef.current.add(blockId);
-      completeBlock(blockId)
-        .then(() => { onAutoCompleted?.(blockId); })
+      verifyStillDone(block)
+        .then((confirmed) => {
+          if (!confirmed) { completingRef.current.delete(blockId); return; }
+          return completeBlock(blockId).then(() => { onAutoCompleted?.(blockId); });
+        })
         .catch(() => { completingRef.current.delete(blockId); });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(Object.keys(dynamic))]);
+
+  const verifyStillDone = async (block) => {
+    try {
+      const [siblingsRes, actualsRes] = await Promise.all([
+        supabase.from("machine_blocks").select("*").eq("sales_order_id", block.sales_order_id).eq("style_id", block.style_id),
+        block._soNumber ? poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").eq("so", block._soNumber) : Promise.resolve({ data: [] }),
+      ]);
+      const freshSiblings = (siblingsRes.data || []).map((b) => ({ ...b, _soNumber: block._soNumber, _planRate: block._planRate }));
+      const freshDynamic = computeBlockActuals({ blocks: freshSiblings, stylesById, actualRows: actualsRes.data || [], calendar, today: todayLocalStr() });
+      const info = freshDynamic[block.id];
+      return !!info && info.remainingQty <= 0;
+    } catch {
+      return false; // any doubt at all — don't complete it
+    }
+  };
 
   return { dynamic, loading, error, refetch: load };
 }
