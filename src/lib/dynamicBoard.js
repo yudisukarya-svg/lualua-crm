@@ -104,7 +104,12 @@ export function computeBlockActuals({ blocks, stylesById, actualRows, calendar, 
     const daily = byKey[actualKey];
     if (!daily) return; // no confirmed data at all for this SO+style — stays static
 
-    const ordered = [...siblings].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || (a.created_at || "").localeCompare(b.created_at || ""));
+    const ordered = [...siblings].sort((a, b) => {
+      const aDone = a.status === "done" ? 0 : 1;
+      const bDone = b.status === "done" ? 0 : 1;
+      if (aDone !== bDone) return aDone - bDone; // done siblings always claim their capacity first, regardless of seq
+      return (a.seq ?? 0) - (b.seq ?? 0) || (a.created_at || "").localeCompare(b.created_at || "");
+    });
     const dates = Object.keys(daily).sort();
 
     // Day-by-day cumulative consumption, sequential across ordered blocks.
