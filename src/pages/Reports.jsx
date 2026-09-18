@@ -3,6 +3,8 @@ import { useReports } from "@/hooks/useReports";
 import { useSchedule } from "@/hooks/useSchedule";
 import { useDailyActuals } from "@/hooks/useDailyActuals";
 import { useMachineDailyNotes } from "@/hooks/useMachineDailyNotes";
+import { useShipments } from "@/hooks/useShipments";
+import { computeOnTimeReport } from "@/lib/onTimeReport";
 import { STAGE_LABELS, makeCalendar } from "@/lib/scheduler";
 import { computeDailyProductionGrid, segmentsFromDays } from "@/lib/dailyProductionGrid";
 import PageHeader from "@/components/PageHeader";
@@ -12,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory, ChevronLeft, ChevronRight, MessageSquare, MessageSquarePlus } from "lucide-react";
+import { FileDown, FileSpreadsheet, FileText, Users, Package, Factory, ChevronLeft, ChevronRight, MessageSquare, MessageSquarePlus, CheckCircle2, AlertTriangle, AlertOctagon } from "lucide-react";
 import { humanize, formatDate, addDaysLocal, todayLocalStr } from "@/lib/utils";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -33,7 +35,9 @@ function ChartCard({ title, children }) {
 
 export default function Reports() {
   const r = useReports();
+  const { shipments } = useShipments();
   const { schedule, raw } = useSchedule();
+  const onTimeReport = computeOnTimeReport({ salesOrders: raw?.salesOrders || [], shipments });
   const { toast } = useToast();
   const [dpmStart, setDpmStart] = useState(() => addDaysLocal(todayLocalStr(), -6));
   const dpmEnd = addDaysLocal(dpmStart, 13);
@@ -330,6 +334,61 @@ export default function Reports() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* On-time delivery performance — historical, fully-dispatched orders only */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">On-time delivery performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4 text-xs text-muted-foreground">
+                Order yang sudah <strong>selesai dikirim penuh</strong> (fully dispatched), dibandingkan <strong>customer deadline</strong> — tanggal pengiriman terakhir vs deadline asli ke customer. Terlambat = maks 7 hari lewat deadline. Sangat terlambat = lebih dari 7 hari.
+              </p>
+              {onTimeReport.total === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">Belum ada order selesai yang punya customer deadline tercatat.</p>
+              ) : (
+                <div className="grid items-center gap-6 lg:grid-cols-[220px_1fr]">
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: "Tepat waktu", value: onTimeReport.onTime, color: "#38a169" },
+                            { name: "Terlambat", value: onTimeReport.late, color: "#dd6b20" },
+                            { name: "Sangat terlambat", value: onTimeReport.veryLate, color: "#c53030" },
+                          ].filter((d) => d.value > 0)}
+                          dataKey="value" nameKey="name" innerRadius={45} outerRadius={75}
+                        >
+                          {[
+                            { color: "#38a169" }, { color: "#dd6b20" }, { color: "#c53030" },
+                          ].map((d, i) => <Cell key={i} fill={d.color} />)}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-center">
+                      <CheckCircle2 className="mx-auto mb-1 h-5 w-5 text-emerald-600" />
+                      <p className="text-2xl font-semibold text-emerald-700">{onTimeReport.pctOnTime}%</p>
+                      <p className="text-xs text-muted-foreground">Tepat waktu ({onTimeReport.onTime})</p>
+                    </div>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-center">
+                      <AlertTriangle className="mx-auto mb-1 h-5 w-5 text-amber-600" />
+                      <p className="text-2xl font-semibold text-amber-700">{onTimeReport.pctLate}%</p>
+                      <p className="text-xs text-muted-foreground">Terlambat ({onTimeReport.late})</p>
+                    </div>
+                    <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 text-center">
+                      <AlertOctagon className="mx-auto mb-1 h-5 w-5 text-rose-600" />
+                      <p className="text-2xl font-semibold text-rose-700">{onTimeReport.pctVeryLate}%</p>
+                      <p className="text-xs text-muted-foreground">Sangat terlambat ({onTimeReport.veryLate})</p>
+                    </div>
+                    <p className="col-span-3 text-xs text-muted-foreground">Dari {onTimeReport.total} order selesai dengan customer deadline tercatat.</p>
+                  </div>
                 </div>
               )}
             </CardContent>
