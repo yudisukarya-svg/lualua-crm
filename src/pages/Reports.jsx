@@ -391,6 +391,46 @@ export default function Reports() {
                   </div>
                 </div>
               )}
+              {onTimeReport.total > 0 && (
+                <div className="mt-5 overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 text-left">SO</th>
+                        <th className="px-3 py-2 text-left">Customer</th>
+                        <th className="px-3 py-2 text-left">Deadline</th>
+                        <th className="px-3 py-2 text-left">Selesai kirim</th>
+                        <th className="px-3 py-2 text-right">Selisih</th>
+                        <th className="px-3 py-2 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...onTimeReport.rows]
+                        .sort((a, b) => {
+                          const order = { veryLate: 0, late: 1, onTime: 2 };
+                          if (order[a.category] !== order[b.category]) return order[a.category] - order[b.category];
+                          return b.daysLate - a.daysLate;
+                        })
+                        .map((row) => (
+                          <tr key={row.soId} className="border-t">
+                            <td className="px-3 py-2 font-medium">{row.soNumber}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{row.customerName || "—"}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{formatDate(row.customerDeadline)}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{formatDate(row.actualCompletionDate)}</td>
+                            <td className={`px-3 py-2 text-right ${row.daysLate > 7 ? "text-rose-600" : row.daysLate > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                              {row.daysLate > 0 ? `+${row.daysLate}h` : row.daysLate === 0 ? "tepat" : `${Math.abs(row.daysLate)}h lebih awal`}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.category === "onTime" && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Tepat waktu</span>}
+                              {row.category === "late" && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Terlambat</span>}
+                              {row.category === "veryLate" && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">Sangat terlambat</span>}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
 
