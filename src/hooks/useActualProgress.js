@@ -37,6 +37,17 @@ export function useActualProgress(soNumbers) {
   }, [key]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Without this, a Planning tab left open for a while keeps showing
+  // whatever actual-progress data existed at page load — if PO Tukang
+  // confirms more handovers afterward, the table's percent column goes
+  // stale even though the "Actual progress" popup (which fetches fresh
+  // every time it's opened) shows the truth. Same root cause and same
+  // fix as the earlier Machine Board staleness issue.
+  useEffect(() => {
+    const id = setInterval(() => { fetchAll(); }, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [fetchAll]);
   return { bySo, loading, refetch: fetchAll };
 }
 

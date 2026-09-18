@@ -23,6 +23,7 @@ function stylesToMap(rows) {
 export function buildJobs(salesOrders, stylesMap, override = {}) {
   const jobs = [];
   salesOrders.forEach((so) => {
+    if (so.status === "cancelled" || so.status === "done" || so.archived) return;
     const byStyle = {};
     (so.sales_order_lines || []).forEach((l) => {
       if (!l.style_id) return;
