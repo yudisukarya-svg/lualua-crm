@@ -21,7 +21,27 @@ const POOLS = [
 // i.e. when it's genuinely clear to start something brand new, not just
 // "has a spare slot today". Scans the whole plan for the LAST day this pool
 // is still busy, then reports the day right after that.
-function freeFromDate(dayList, todayStr, getUsed) {
+// First day (from today) this pool has at least one free slot — i.e.
+// practically available for new work. Deliberately NOT "zero usage
+// anywhere": a pool with 4 of 5 workers free is already available even if
+// one slow-moving order keeps a single worker busy for months (this
+// specifically happens when that order's own upstream stage is itself
+// capacity-constrained and trickles output — the pool isn't "stuck", it
+// just has one long-tail job parked in it).
+function firstOpeningDate(dayList, todayStr, getUsed, getAvail) {
+  for (const d of dayList) {
+    if (d.date < todayStr) continue;
+    const avail = getAvail(d);
+    if (avail > 0 && getUsed(d) < avail) return d.date;
+  }
+  return null;
+}
+
+// First day (from today onward) the pool has genuinely NOTHING left in it
+// at all — the stricter, Machine-Board-style "Free from" reading. Useful
+// for "when is this fully clear for something big", separate from "when
+// is there an opening".
+function fullyClearDate(dayList, todayStr, getUsed) {
   let lastBusy = null;
   dayList.forEach((d) => {
     if (d.date < todayStr) return;
@@ -71,10 +91,11 @@ export default function WorkerLoading() {
   // Board timeline, so it isn't duplicated here), plus every other
   // worker-pool stage for the same view in one place.
   const freeFromRows = [
-    { key: "manual-knit", label: "Rajut Manual", getUsed: (d) => d.util?.knitting?.pools?.manual?.used || 0, todayUsed: dayEntry?.util?.knitting?.pools?.manual?.used, todayAvail: dayEntry?.util?.knitting?.pools?.manual?.avail },
+    { key: "manual-knit", label: "Rajut Manual", getUsed: (d) => d.util?.knitting?.pools?.manual?.used || 0, getAvail: (d) => d.util?.knitting?.pools?.manual?.avail || 0, todayUsed: dayEntry?.util?.knitting?.pools?.manual?.used, todayAvail: dayEntry?.util?.knitting?.pools?.manual?.avail },
     ...STAGES.filter((s) => s !== "knitting").map((s) => ({
       key: s, label: STAGE_LABELS[s],
       getUsed: (d) => d.util?.[s]?.workersUsed || 0,
+      getAvail: (d) => d.util?.[s]?.workersAvail || 0,
       todayUsed: dayEntry?.util?.[s]?.workersUsed, todayAvail: dayEntry?.util?.[s]?.workersAvail,
     })),
   ];
@@ -116,16 +137,20 @@ export default function WorkerLoading() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {freeFromRows.map((r) => {
-            const from = freeFromDate(dayList, today, r.getUsed);
-            const isFreeNow = from <= today;
+            const opening = firstOpeningDate(dayList, today, r.getUsed, r.getAvail);
+            const clear = fullyClearDate(dayList, today, r.getUsed);
+            const isFreeNow = opening != null && opening <= today;
             return (
               <div key={r.key} className="rounded-md border p-3">
                 <p className="text-xs font-medium text-muted-foreground">{r.label}</p>
                 <p className={`text-sm font-semibold ${isFreeNow ? "text-emerald-600" : "text-foreground"}`}>
-                  {isFreeNow ? "Bebas sekarang" : `Bebas mulai ${formatDate(from)}`}
+                  {opening == null ? "Penuh (tidak ada slot terlihat)" : isFreeNow ? "Ada slot kosong sekarang" : `Slot kosong mulai ${formatDate(opening)}`}
                 </p>
                 {r.todayAvail != null && (
                   <p className="text-xs text-muted-foreground">{Math.max(0, r.todayAvail - (r.todayUsed || 0))} dari {r.todayAvail} bebas hari ini</p>
+                )}
+                {clear > (opening || today) && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Sepenuhnya kosong (0 terpakai): mulai {formatDate(clear)}</p>
                 )}
               </div>
             );
