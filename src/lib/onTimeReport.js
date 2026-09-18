@@ -14,6 +14,30 @@
 //   late:     0 < (actual - deadline) <= 7 days
 //   veryLate: (actual - deadline) > 7 days
 
+// Maps Dispatch & Return activity-log rows (real shipment events, from
+// dispatch_activity_log) into the { sales_order_id, qty, shipping_date }
+// shape computeOnTimeReport expects. Only exact so_number matches against
+// CRM's own sales_orders count — the log has some messy/non-SO reference
+// numbers (SHP-xxxxx, INV-xxxxx, free-text) that don't correspond to a
+// real CRM sales order; those are skipped rather than guessed at.
+export function mapDispatchLogToShipments(logRows, salesOrders) {
+  const soIdByNumber = {};
+  (salesOrders || []).forEach((so) => { soIdByNumber[so.so_number] = so.id; });
+
+  const out = [];
+  (logRows || []).forEach((r) => {
+    const soNumber = r.detail?.so;
+    const soId = soNumber && soIdByNumber[soNumber];
+    if (!soId) return;
+    const qty = Number(r.detail?.totalQty) || 0;
+    if (qty <= 0) return;
+    const shippingDate = (r.created_at || "").slice(0, 10);
+    if (!shippingDate) return;
+    out.push({ sales_order_id: soId, qty, shipping_date: shippingDate });
+  });
+  return out;
+}
+
 function daysBetween(dateStr1, dateStr2) {
   // dateStr2 - dateStr1, in whole days (both "YYYY-MM-DD")
   const [y1, m1, d1] = dateStr1.split("-").map(Number);

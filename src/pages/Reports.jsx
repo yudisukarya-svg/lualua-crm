@@ -4,7 +4,8 @@ import { useSchedule } from "@/hooks/useSchedule";
 import { useDailyActuals } from "@/hooks/useDailyActuals";
 import { useMachineDailyNotes } from "@/hooks/useMachineDailyNotes";
 import { useShipments } from "@/hooks/useShipments";
-import { computeOnTimeReport } from "@/lib/onTimeReport";
+import { useDispatchLog } from "@/hooks/useDispatchLog";
+import { computeOnTimeReport, mapDispatchLogToShipments } from "@/lib/onTimeReport";
 import { STAGE_LABELS, makeCalendar } from "@/lib/scheduler";
 import { computeDailyProductionGrid, segmentsFromDays } from "@/lib/dailyProductionGrid";
 import PageHeader from "@/components/PageHeader";
@@ -36,8 +37,12 @@ function ChartCard({ title, children }) {
 export default function Reports() {
   const r = useReports();
   const { shipments } = useShipments();
+  const { rows: dispatchLogRows } = useDispatchLog();
   const { schedule, raw } = useSchedule();
-  const onTimeReport = computeOnTimeReport({ salesOrders: raw?.salesOrders || [], shipments });
+  const onTimeReport = computeOnTimeReport({
+    salesOrders: raw?.salesOrders || [],
+    shipments: [...(shipments || []), ...mapDispatchLogToShipments(dispatchLogRows, raw?.salesOrders || [])],
+  });
   const { toast } = useToast();
   const [dpmStart, setDpmStart] = useState(() => addDaysLocal(todayLocalStr(), -6));
   const dpmEnd = addDaysLocal(dpmStart, 13);
@@ -346,7 +351,7 @@ export default function Reports() {
             </CardHeader>
             <CardContent>
               <p className="mb-4 text-xs text-muted-foreground">
-                Order yang sudah <strong>selesai dikirim penuh</strong> (fully dispatched), dibandingkan <strong>customer deadline</strong> — tanggal pengiriman terakhir vs deadline asli ke customer. Terlambat = maks 7 hari lewat deadline. Sangat terlambat = lebih dari 7 hari.
+                Order yang sudah <strong>selesai dikirim penuh</strong> (fully dispatched, dari data real aplikasi Dispatch and Return), dibandingkan <strong>customer deadline</strong> — tanggal pengiriman terakhir vs deadline asli ke customer. Terlambat = maks 7 hari lewat deadline. Sangat terlambat = lebih dari 7 hari.
               </p>
               {onTimeReport.total === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">Belum ada order selesai yang punya customer deadline tercatat.</p>
