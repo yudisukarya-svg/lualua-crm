@@ -70,11 +70,23 @@ export async function removeBlock(blockId) {
 // machine time going forward, but its qty still counts as already-knitted
 // so downstream stages (linking, finishing, ...) don't wait on it forever,
 // and it doesn't reappear in Unplaced orders.
-export async function completeBlock(blockId) {
+// source: "manual" (a person clicked ✓) or "auto" (dynamic board hit 0
+// remaining) — recorded so a surprise completion can be traced later.
+export async function completeBlock(blockId, source = "manual") {
   const { data: auth } = await supabase.auth.getUser();
   const { error } = await supabase
     .from("machine_blocks")
-    .update({ status: "done", completed_at: new Date().toISOString(), completed_by: auth?.user?.id ?? null })
+    .update({ status: "done", completed_at: new Date().toISOString(), completed_by: auth?.user?.id ?? null, completed_source: source })
+    .eq("id", blockId);
+  if (error) throw error;
+}
+
+// Undo a "mark as done" — puts the block back into its machine's active
+// queue at the same position it had before.
+export async function reopenBlock(blockId) {
+  const { error } = await supabase
+    .from("machine_blocks")
+    .update({ status: "active", completed_at: null, completed_by: null, completed_source: null })
     .eq("id", blockId);
   if (error) throw error;
 }

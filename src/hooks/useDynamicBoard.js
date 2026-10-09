@@ -70,7 +70,7 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
       verifyStillDone(block)
         .then((confirmed) => {
           if (!confirmed) { completingRef.current.delete(blockId); return; }
-          return completeBlock(blockId).then(() => { onAutoCompleted?.(blockId); });
+          return completeBlock(blockId, "auto").then(() => { onAutoCompleted?.(blockId); });
         })
         .catch(() => { completingRef.current.delete(blockId); });
     });
