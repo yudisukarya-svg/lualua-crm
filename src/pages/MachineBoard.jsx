@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Wand2, Loader2, X, Power, ArrowRightLeft, Cpu, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, Split, Clock, Check, Pause, Play, TrendingUp, TrendingDown, CheckCircle2 } from "lucide-react";
+import { Wand2, Loader2, X, Power, ArrowRightLeft, Cpu, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, Split, Clock, Check, Pause, Play, TrendingUp, TrendingDown, CheckCircle2, Undo2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSchedule, buildJobs } from "@/hooks/useSchedule";
-import { useMachines, autoFillBoard, moveBlock, removeBlock, setMachineActive, addBlock, setBlockSeq, splitBlock, addReservation, removeReservation, completeBlock, holdBlock, resumeBlock } from "@/hooks/useMachines";
+import { useMachines, autoFillBoard, moveBlock, removeBlock, setMachineActive, addBlock, setBlockSeq, splitBlock, addReservation, removeReservation, completeBlock, reopenBlock, holdBlock, resumeBlock } from "@/hooks/useMachines";
 import { useDynamicBoard } from "@/hooks/useDynamicBoard";
 import { computeSchedule } from "@/lib/scheduler";
 import { todayLocalStr, addDaysLocal } from "@/lib/utils";
@@ -34,6 +34,7 @@ export default function MachineBoard() {
   const [resState, setResState] = useState({ open: false, machine: null, date: todayLocalStr(), hours: 2, label: "", so_number: "", zoho_salesorder_id: "", style_name: "" });
   const [soPicker, setSoPicker] = useState({ open: false, list: [], loading: false, q: "", step: "so", so: null, styles: [] });
   const [holdDialog, setHoldDialog] = useState({ open: false, block: null, reason: "" });
+  const [doneDialog, setDoneDialog] = useState({ open: false, block: null });
   const [boardTab, setBoardTab] = useState("board");
   const [completedStart, setCompletedStart] = useState(() => addDaysLocal(todayLocalStr(), -13));
   const completedEnd = addDaysLocal(completedStart, 13);
@@ -125,9 +126,27 @@ export default function MachineBoard() {
     catch (e) { toast({ variant: "destructive", title: "Remove failed", description: e.message }); }
   };
 
-  const doComplete = async (block) => {
-    try { await completeBlock(block.id); toast({ title: "Marked as done", description: "Knitting finished — cleared from the queue." }); await refetch(); }
-    catch (e) { toast({ variant: "destructive", title: "Failed", description: e.message }); }
+  // ✓ no longer completes immediately — it opens a confirmation first, so a
+  // misclick next to Hold / Remove can't silently close a block.
+  const doComplete = (block) => setDoneDialog({ open: true, block });
+
+  const confirmComplete = async () => {
+    const block = doneDialog.block;
+    if (!block) return;
+    try {
+      await completeBlock(block.id, "manual");
+      setDoneDialog({ open: false, block: null });
+      toast({ title: "Marked as done", description: "Knitting finished — cleared from the queue." });
+      await refetch();
+    } catch (e) { toast({ variant: "destructive", title: "Failed", description: e.message }); }
+  };
+
+  const doReopen = async (block) => {
+    try {
+      await reopenBlock(block.id);
+      toast({ title: "Block reopened", description: "Back in the machine's active queue." });
+      await refetch(); refetchDynamic();
+    } catch (e) { toast({ variant: "destructive", title: "Reopen failed", description: e.message }); }
   };
 
   const doHold = async () => {
@@ -460,6 +479,8 @@ export default function MachineBoard() {
                       <TableHead>Machine</TableHead>
                       <TableHead className="text-center">Qty</TableHead>
                       <TableHead>Completed</TableHead>
+                      <TableHead>How</TableHead>
+                      <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -471,6 +492,16 @@ export default function MachineBoard() {
                         <TableCell className="text-muted-foreground">{machine?.name || "—"}</TableCell>
                         <TableCell className="text-center">{block.qty}</TableCell>
                         <TableCell className="text-muted-foreground">{fmtDate(block.completed_at?.slice(0, 10))}</TableCell>
+                        <TableCell>
+                          {block.completed_source === "auto" ? <Badge variant="secondary">Auto</Badge>
+                            : block.completed_source === "manual" ? <Badge variant="outline">Manual</Badge>
+                            : <span className="text-xs text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" title="Undo — put this block back in the active queue" onClick={() => doReopen(block)}>
+                            <Undo2 className="h-3.5 w-3.5" /> Reopen
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -526,6 +557,40 @@ export default function MachineBoard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={doneDialog.open} onOpenChange={(o) => setDoneDialog((s) => ({ ...s, open: o }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark knitting as done?</DialogTitle>
+            <DialogDescription>
+              The block leaves the machine queue. You can undo this later from the "Marked as done" tab.
+            </DialogDescription>
+          </DialogHeader>
+          {doneDialog.block && (() => {
+            const b = doneDialog.block;
+            const dyn = dynamic[b.id];
+            return (
+              <div className="space-y-1 rounded-md border p-3 text-sm">
+                <div><span className="text-muted-foreground">SO:</span> <span className="font-medium">{soById[b.sales_order_id]?.so_number || "—"}</span></div>
+                <div><span className="text-muted-foreground">Style:</span> {styleName(b.style_id)}</div>
+                <div><span className="text-muted-foreground">Machine:</span> {machineById[b.machine_id]?.name || "—"}</div>
+                <div><span className="text-muted-foreground">Block qty:</span> {b.initial_qty || b.qty} pcs</div>
+                <div>
+                  <span className="text-muted-foreground">Delivered (PO Tukang):</span>{" "}
+                  {dyn ? `${dyn.deliveredQty} pcs — ${Math.max(0, Math.ceil(dyn.remainingQty))} remaining` : "no handover recorded for this block yet"}
+                </div>
+                {(!dyn || dyn.remainingQty > 0) && (
+                  <p className="pt-1 text-xs font-medium text-amber-600">PO Tukang data says this block is not finished yet. Make sure that is really the case.</p>
+                )}
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDoneDialog({ open: false, block: null })}>Cancel</Button>
+            <Button onClick={confirmComplete}>Yes, mark as done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={holdDialog.open} onOpenChange={(o) => setHoldDialog((s) => ({ ...s, open: o }))}>
         <DialogContent>
           <DialogHeader>
