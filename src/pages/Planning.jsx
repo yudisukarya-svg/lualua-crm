@@ -4,6 +4,7 @@ import { useSchedule } from "@/hooks/useSchedule";
 import { deleteSalesOrder, archiveSalesOrder, unarchiveSalesOrder, READINESS_ITEMS } from "@/hooks/useSalesOrders";
 import { useShipments } from "@/hooks/useShipments";
 import { useActualProgress, overallActualPercent } from "@/hooks/useActualProgress";
+import { useDispatchLog } from "@/hooks/useDispatchLog";
 import { updateSettings } from "@/hooks/usePlanningCalendar";
 import { printOrderPlan, printDailySheet } from "@/lib/printPlan";
 import ReadinessDialog from "@/components/ReadinessDialog";
@@ -48,7 +49,20 @@ export default function Planning() {
   const [showArchived, setShowArchived] = useState(false);
   const { shipments, refetch: refetchShipments } = useShipments();
 
-  const dispatchedQty = (soId) => shipments.filter((s) => s.sales_order_id === soId).reduce((n, s) => n + (Number(s.qty) || 0), 0);
+  // Shipments are actually recorded in the PO Tukang Dispatch app ("kirim"),
+  // not in the CRM's own shipments table — so count both and take the larger,
+  // otherwise fully-shipped orders never get their Archive button.
+  const { rows: dispatchLogRows } = useDispatchLog();
+  const dispatchLogBySo = {};
+  dispatchLogRows.forEach((row) => {
+    const so = row.detail?.so;
+    if (!so) return;
+    dispatchLogBySo[so] = (dispatchLogBySo[so] || 0) + (Number(row.detail?.totalQty) || 0);
+  });
+  const dispatchedQty = (soId, soNumber) => Math.max(
+    shipments.filter((s) => s.sales_order_id === soId).reduce((n, s) => n + (Number(s.qty) || 0), 0),
+    dispatchLogBySo[soNumber] || 0,
+  );
 
   const readyCount = (r) => READINESS_ITEMS.filter((i) => r.readiness?.[i.key]).length;
 
@@ -169,7 +183,7 @@ export default function Planning() {
                     const f = byId[r.id];
                     const qty = (r.sales_order_lines || []).reduce((n, l) => n + (l.quantity || 0), 0);
                     const qcFinalQty = actualBySo[r.so_number]?.qc_final || 0;
-                    const disp = dispatchedQty(r.id);
+                    const disp = dispatchedQty(r.id, r.so_number);
                     const fullyDispatched = disp >= qty && qty > 0;
                     return (
                       <TableRow key={r.id}>
