@@ -12,3 +12,25 @@ const POTUKANG_ANON_KEY =
 export const poTukangClient = createClient(POTUKANG_URL, POTUKANG_ANON_KEY, {
   auth: { persistSession: false },
 });
+
+// Supabase returns at most 1000 rows per request. PO Tukang handover data
+// passed that long ago (3,300+ rows for active SOs alone), so a plain
+// .select() silently dropped most of it — Planning's Actual % showed 0 for
+// most orders. This fetches page by page until everything is in.
+//
+// makeQuery: () => a fresh query builder (from/select/filters, no range).
+// orderCols: columns to sort by so pages never overlap or skip. Use ALL the
+//   selected columns when the view has no unique id — rows that tie on
+//   every column are identical, so which page they land on doesn't matter.
+const PAGE = 1000;
+export async function fetchAllRows(makeQuery, orderCols) {
+  const all = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = makeQuery();
+    (orderCols || []).forEach((c) => { q = q.order(c, { ascending: true, nullsFirst: true }); });
+    const { data, error } = await q.range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    all.push(...(data || []));
+    if (!data || data.length < PAGE) return { data: all, error: null };
+  }
+}

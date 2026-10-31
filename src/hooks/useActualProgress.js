@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 import { ACTUAL_STAGES, TIPE_TO_STAGE } from "@/lib/actualStages";
 
 const emptyStages = () => Object.fromEntries(ACTUAL_STAGES.map((s) => [s, 0]));
@@ -15,10 +15,10 @@ export function useActualProgress(soNumbers) {
   const fetchAll = useCallback(async () => {
     if (!soNumbers || soNumbers.length === 0) { setBySo({}); setLoading(false); return; }
     setLoading(true);
-    const { data, error } = await poTukangClient
+    const { data, error } = await fetchAllRows(() => poTukangClient
       .from("po_stage_actuals")
       .select("so, tipe, aktual")
-      .in("so", soNumbers);
+      .in("so", soNumbers), ["so", "tipe", "aktual"]);
 
     const map = {};
     if (error) {

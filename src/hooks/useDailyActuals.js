@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 
 export function useDailyActuals(startDate, endDate) {
   const [rows, setRows] = useState([]);
@@ -8,11 +8,11 @@ export function useDailyActuals(startDate, endDate) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    poTukangClient
+    fetchAllRows(() => poTukangClient
       .from("po_daily_actuals")
       .select("so, tgl, aktual, mesin")
       .gte("tgl", startDate)
-      .lte("tgl", endDate)
+      .lte("tgl", endDate), ["so", "tgl", "aktual", "mesin"])
       .then(({ data, error }) => {
         if (cancelled) return;
         setRows(error ? [] : data || []);

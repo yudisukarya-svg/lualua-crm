@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 import { matchStyleId } from "@/lib/dynamicBoard";
 import { makeCalendar } from "@/lib/scheduler";
 import { todayLocalStr, addDaysLocal } from "@/lib/utils";
@@ -20,10 +20,10 @@ export function useAttentionItems({ raw }) {
     setLoading(true);
     (async () => {
       const [actualsRes, samplesRes] = await Promise.all([
-        poTukangClient.from("po_style_actuals").select("so, tgl, style_raw, aktual").in("so", soNums),
-        poTukangClient.from("sm_samples")
+        fetchAllRows(() => poTukangClient.from("po_style_actuals").select("so, tgl, style_raw, aktual").in("so", soNums), ["so", "tgl", "style_raw", "aktual"]),
+        fetchAllRows(() => poTukangClient.from("sm_samples")
           .select("id, so, customer, style, deadline, tgl_masuk, tgl_approval, pending, pending_reason, pending_since, archived, status")
-          .or("archived.is.null,archived.eq.false"),
+          .or("archived.is.null,archived.eq.false"), ["id"]),
       ]);
       if (cancelled) return;
       setActualRows(actualsRes.data || []);

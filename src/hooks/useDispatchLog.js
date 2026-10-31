@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 
 // Real shipment history from the Dispatch and Return app — read-only, same
 // project as PO Tukang. dispatch_activity_log is an event log (not a clean
@@ -16,10 +16,10 @@ export function useDispatchLog() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await poTukangClient
+      const { data, error } = await fetchAllRows(() => poTukangClient
         .from("dispatch_activity_log")
         .select("action_type, detail, created_at")
-        .in("action_type", ["kirim", "kirim_ulang"]);
+        .in("action_type", ["kirim", "kirim_ulang"]), ["id"]);
       if (!cancelled) {
         setRows(error ? [] : (data || []));
         setLoading(false);

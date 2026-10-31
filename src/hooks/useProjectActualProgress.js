@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 import { ACTUAL_STAGES, TIPE_TO_STAGE } from "@/lib/actualStages";
 
 const emptyStages = () => Object.fromEntries(ACTUAL_STAGES.map((s) => [s, 0]));
@@ -30,10 +30,10 @@ export function useProjectActualProgress(projects) {
 
     const sums = {}; // project_id -> stage sums
     if (soNumbers.length > 0) {
-      const { data: rows, error } = await poTukangClient
+      const { data: rows, error } = await fetchAllRows(() => poTukangClient
         .from("po_stage_actuals")
         .select("so, tipe, aktual")
-        .in("so", soNumbers);
+        .in("so", soNumbers), ["so", "tipe", "aktual"]);
       if (error) console.error("Couldn't load PO Tukang actuals:", error.message);
       (rows ?? []).forEach((row) => {
         const stage = TIPE_TO_STAGE[row.tipe];

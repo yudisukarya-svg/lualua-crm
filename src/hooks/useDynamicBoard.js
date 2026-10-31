@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 import { completeBlock } from "@/hooks/useMachines";
 import { computeBlockActuals } from "@/lib/dynamicBoard";
 import { makeCalendar } from "@/lib/scheduler";
@@ -29,10 +29,10 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
     setLoading(true);
     setError(null);
     try {
-      const { data, error: err } = await poTukangClient
+      const { data, error: err } = await fetchAllRows(() => poTukangClient
         .from("po_style_actuals")
         .select("so, tgl, mesin, style_raw, aktual")
-        .in("so", soNumbers);
+        .in("so", soNumbers), ["so", "tgl", "mesin", "style_raw", "aktual"]);
       if (err) throw err;
       setActualRows(data || []);
     } catch (e) {
@@ -81,7 +81,7 @@ export function useDynamicBoard({ soNumbers, blocks, stylesById, holidays, setti
     try {
       const [siblingsRes, actualsRes] = await Promise.all([
         supabase.from("machine_blocks").select("*").eq("sales_order_id", block.sales_order_id).eq("style_id", block.style_id),
-        block._soNumber ? poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").eq("so", block._soNumber) : Promise.resolve({ data: [] }),
+        block._soNumber ? fetchAllRows(() => poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").eq("so", block._soNumber), ["so", "tgl", "mesin", "style_raw", "aktual"]) : Promise.resolve({ data: [] }),
       ]);
       const freshSiblings = (siblingsRes.data || []).map((b) => ({ ...b, _soNumber: block._soNumber, _planRate: block._planRate }));
       const freshDynamic = computeBlockActuals({ blocks: freshSiblings, stylesById, actualRows: actualsRes.data || [], calendar, today: todayLocalStr() });

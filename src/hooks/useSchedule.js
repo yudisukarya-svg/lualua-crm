@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { poTukangClient } from "@/lib/supabasePoTukang";
+import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 import { computeSchedule, makeCalendar } from "@/lib/scheduler";
 import { computeBlockActuals } from "@/lib/dynamicBoard";
 import { resourcesToMap } from "@/hooks/useResources";
@@ -117,7 +117,7 @@ export function useSchedule() {
     if (soNumbers.length === 0) { setDynamicInfo({}); return; }
     setDynamicLoading(true);
     try {
-      const { data, error } = await poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").in("so", soNumbers);
+      const { data, error } = await fetchAllRows(() => poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").in("so", soNumbers), ["so", "tgl", "mesin", "style_raw", "aktual"]);
       if (error) throw error;
       const calendar = makeCalendar({ sundayOff: raw.settings?.sunday_off ?? true, saturdayOff: raw.settings?.saturday_off ?? false, holidays: raw.holidays || [] });
       const enrichedBlocks = raw.blocks.map((b) => ({
