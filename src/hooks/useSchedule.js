@@ -3,6 +3,9 @@ import { supabase } from "@/lib/supabase";
 import { poTukangClient, fetchAllRows } from "@/lib/supabasePoTukang";
 import { computeSchedule, makeCalendar } from "@/lib/scheduler";
 import { computeBlockActuals } from "@/lib/dynamicBoard";
+import { sumStageActualsBySo, buildStageCredit } from "@/lib/stageCredit";
+import { simulateQuote } from "@/lib/quoteSim";
+import { realPcsPerDay, calibrateResources, windowStart } from "@/lib/realCapacity";
 import { resourcesToMap } from "@/hooks/useResources";
 import { todayLocalStr } from "@/lib/utils";
 
@@ -107,6 +110,10 @@ export function useSchedule() {
   // that doesn't change minute to minute. Fetched once when data first
   // loads, plus on demand via refetchDynamic() (a manual "Refresh" button).
   const [dynamicInfo, setDynamicInfo] = useState({});
+  // Real progress per SO at every stage (PO Tukang + Dispatch) — see stageCredit.js.
+  const [stageBySo, setStageBySo] = useState(null);
+  // Real pcs/day per later stage over the last 30 days — see realCapacity.js.
+  const [realPerDay, setRealPerDay] = useState(null);
   const [dynamicLoading, setDynamicLoading] = useState(false);
   const dynamicLoadedRef = useRef(false);
 
@@ -114,8 +121,23 @@ export function useSchedule() {
     if (!raw) return;
     const soById = {}; raw.salesOrders.forEach((so) => { soById[so.id] = so; });
     const soNumbers = [...new Set(raw.blocks.map((b) => soById[b.sales_order_id]?.so_number).filter(Boolean))];
-    if (soNumbers.length === 0) { setDynamicInfo({}); return; }
+    const openSoNumbers = [...new Set(raw.salesOrders.filter((so) => so.status !== "cancelled" && so.status !== "done" && !so.archived).map((so) => so.so_number).filter(Boolean))];
     setDynamicLoading(true);
+    if (openSoNumbers.length > 0) {
+      try {
+        const todayStr = todayLocalStr();
+        const [stageRes, dispRes, dailyRes] = await Promise.all([
+          fetchAllRows(() => poTukangClient.from("po_stage_actuals").select("so, tipe, aktual").in("so", openSoNumbers), ["so", "tipe", "aktual"]),
+          fetchAllRows(() => poTukangClient.from("dispatch_activity_log").select("action_type, detail, created_at").in("action_type", ["kirim", "kirim_ulang"]), ["id"]),
+          fetchAllRows(() => poTukangClient.from("po_daily_actuals").select("so, tipe, tgl, aktual").gte("tgl", windowStart(todayStr)), ["so", "tipe", "tgl", "aktual"]),
+        ]);
+        if (!stageRes.error && !dispRes.error) setStageBySo(sumStageActualsBySo(stageRes.data, dispRes.data));
+        if (!dailyRes.error && !dispRes.error) setRealPerDay(realPcsPerDay({ dailyRows: dailyRes.data, dispatchRows: dispRes.data, today: todayStr, settings: raw.settings, holidays: raw.holidays }));
+      } catch {
+        // keep previous value — forecast falls back to knitting-only progress
+      }
+    }
+    if (soNumbers.length === 0) { setDynamicInfo({}); setDynamicLoading(false); return; }
     try {
       const { data, error } = await fetchAllRows(() => poTukangClient.from("po_style_actuals").select("so, tgl, mesin, style_raw, aktual").in("so", soNumbers), ["so", "tgl", "mesin", "style_raw", "aktual"]);
       if (error) throw error;
@@ -167,15 +189,22 @@ export function useSchedule() {
 
   const today = todayLocalStr();
 
+  // Configured capacity, lifted to real recent output where that's higher.
+  const { resources: effectiveResources, basis: capacityBasis } = useMemo(() => {
+    if (!raw) return { resources: {}, basis: {} };
+    return calibrateResources(raw.resources, buildJobs(raw.salesOrders, raw.styles), realPerDay);
+  }, [raw, realPerDay]);
+
   const schedule = useMemo(() => {
     if (!raw) return null;
     const jobs = buildJobs(raw.salesOrders, raw.styles);
     return computeSchedule({
-      jobs, resources: raw.resources, settings: raw.settings,
+      jobs, resources: effectiveResources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
+      stageCredit: buildStageCredit(jobs, stageBySo),
     });
-  }, [raw, today, effectiveBlocks, extraKnittingCredit]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
 
   // What-if: recompute with a single SO's earliest start overridden.
   const runWhatIf = useCallback((soId, earliestStart, priorityMode) => {
@@ -183,40 +212,52 @@ export function useSchedule() {
     const orders = raw.salesOrders.map((so) => so.id === soId ? { ...so, earliest_start: earliestStart } : so);
     const jobs = buildJobs(orders, raw.styles);
     const res = computeSchedule({
-      jobs, resources: raw.resources, settings: raw.settings,
+      jobs, resources: effectiveResources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: priorityMode || raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
+      stageCredit: buildStageCredit(jobs, stageBySo),
     });
     return res.orders.find((o) => o.id === soId) || null;
-  }, [raw, today]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
 
   // What-if: recompute with extra workers added to one or more stage pools.
   // extra: { knitting_manual?, knitting_machine?, linking?, ... } of additional counts.
   const runCapacityWhatIf = useCallback((extra = {}) => {
     if (!raw) return null;
-    const resources = { ...raw.resources };
+    const resources = { ...effectiveResources };
     Object.entries(extra).forEach(([k, v]) => { resources[k] = (resources[k] || 0) + (Number(v) || 0); });
     const jobs = buildJobs(raw.salesOrders, raw.styles);
     return computeSchedule({
       jobs, resources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
+      stageCredit: buildStageCredit(jobs, stageBySo),
     });
-  }, [raw, today]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
 
   // What-if: recompute with machine assignments overridden { `${soId}:${styleId}`: machines }.
   const runMachineWhatIf = useCallback((override = {}) => {
     if (!raw) return null;
     const jobs = buildJobs(raw.salesOrders, raw.styles, override);
     return computeSchedule({
-      jobs, resources: raw.resources, settings: raw.settings,
+      jobs, resources: effectiveResources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
+      stageCredit: buildStageCredit(jobs, stageBySo),
     });
-  }, [raw, today]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
+
+  // Quote for a NEW order that isn't in the system yet — see quoteSim.js.
+  const runQuote = useCallback((input) => {
+    if (!raw) return null;
+    return simulateQuote({
+      raw: { ...raw, resources: effectiveResources }, today, buildJobs, effectiveBlocks, extraKnittingCredit,
+      makeStageCredit: (jobs) => buildStageCredit(jobs, stageBySo), input,
+    });
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
 
   return {
-    schedule, raw, loading, refetch: load, runWhatIf, runCapacityWhatIf, runMachineWhatIf, runKnittingWhatIf: runMachineWhatIf,
+    schedule, raw, runQuote, stageBySo, effectiveResources, capacityBasis, realPerDay, loading, refetch: load, runWhatIf, runCapacityWhatIf, runMachineWhatIf, runKnittingWhatIf: runMachineWhatIf,
     dynamic: dynamicInfo, dynamicLoading, refetchDynamic: loadDynamic,
   };
 }

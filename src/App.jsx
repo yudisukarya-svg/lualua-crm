@@ -20,6 +20,7 @@ import Styles from "@/pages/Styles";
 import Yarns from "@/pages/Yarns";
 import Materials from "@/pages/Materials";
 import MachineBoard from "@/pages/MachineBoard";
+import OrderQuote from "@/pages/OrderQuote";
 import Resources from "@/pages/Resources";
 import PlanningCalendar from "@/pages/PlanningCalendar";
 import NotFound from "@/pages/NotFound";
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/planning/yarns" element={<Yarns />} />
             <Route path="/planning/materials" element={<Materials />} />
             <Route path="/planning/board" element={<MachineBoard />} />
+            <Route path="/planning/quote" element={<OrderQuote />} />
             <Route path="/planning/resources" element={<Resources />} />
             <Route path="/planning/calendar" element={<PlanningCalendar />} />
           </Route>

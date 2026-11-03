@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, BarChart3, X,
-  ClipboardList, Gauge, Shapes, Factory, CalendarDays, UsersRound, Cpu, Boxes, LayoutGrid, CloudDownload,
+  ClipboardList, Gauge, Shapes, Factory, CalendarDays, UsersRound, Cpu, Boxes, LayoutGrid, CloudDownload, CalendarCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logoUrl from "@/assets/logo.png";
@@ -15,6 +15,7 @@ const NAV = [
 
 const PLANNING_NAV = [
   { to: "/planning", label: "Planning", icon: ClipboardList },
+  { to: "/planning/quote", label: "Order Quote", icon: CalendarCheck },
   { to: "/planning/capacity", label: "Capacity", icon: Gauge },
   { to: "/planning/workers", label: "Worker Loading", icon: UsersRound },
   { to: "/planning/knitting", label: "Knitting Planning", icon: Cpu },

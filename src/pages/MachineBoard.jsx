@@ -5,6 +5,7 @@ import { useSchedule, buildJobs } from "@/hooks/useSchedule";
 import { useMachines, autoFillBoard, moveBlock, removeBlock, setMachineActive, addBlock, setBlockSeq, splitBlock, addReservation, removeReservation, completeBlock, reopenBlock, holdBlock, resumeBlock } from "@/hooks/useMachines";
 import { useDynamicBoard } from "@/hooks/useDynamicBoard";
 import { computeSchedule } from "@/lib/scheduler";
+import { buildStageCredit } from "@/lib/stageCredit";
 import { todayLocalStr, addDaysLocal } from "@/lib/utils";
 import { printMachineBoard } from "@/lib/printPlan";
 import MachineTimeline from "@/components/MachineTimeline";
@@ -27,7 +28,7 @@ const fmtDate = (s) => (s ? new Date(s + "T00:00:00").toLocaleDateString("en-GB"
 const GAUGE_LABEL = { "7": "7 gauge", "5": "5 gauge", "12": "12 gauge" };
 
 export default function MachineBoard() {
-  const { schedule, raw, loading, refetch } = useSchedule();
+  const { schedule, raw, loading, refetch, stageBySo, effectiveResources } = useSchedule();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [splitState, setSplitState] = useState({ open: false, block: null, qty: "", target: "", startAfter: "" });
@@ -68,9 +69,10 @@ export default function MachineBoard() {
   // pushes every later block on that machine forward or back with it. That
   // cascading isn't separate logic — it's the same day-by-day engine the
   // rest of the app already relies on, just fed different numbers.
+  const boardJobs = raw ? buildJobs(raw.salesOrders, raw.styles) : [];
   const dynamicBoardResult = raw ? computeSchedule({
-    jobs: buildJobs(raw.salesOrders, raw.styles),
-    resources: raw.resources, settings: raw.settings, holidays: raw.holidays,
+    jobs: boardJobs, stageCredit: buildStageCredit(boardJobs, stageBySo),
+    resources: effectiveResources, settings: raw.settings, holidays: raw.holidays,
     today: todayLocalStr(), priorityMode: raw.settings?.priority_mode || "fifo",
     machines: raw.machines,
     blocks: enrichedBlocks

@@ -57,9 +57,11 @@ function comparator(mode) {
   return (a, b) => (a.sequence ?? 0) - (b.sequence ?? 0);
 }
 
+// Capacity can be fractional "equivalent workers" (see realCapacity.js) — keep displays tidy.
+const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
 const zero = () => Object.fromEntries(STAGES.map((s) => [s, 0]));
 
-export function computeSchedule({ jobs, resources, settings = {}, holidays = [], today, priorityMode = "fifo", horizonDays = 600, machines = [], blocks = [], reservations = [], extraKnittingCredit = {} }) {
+export function computeSchedule({ jobs, resources, settings = {}, holidays = [], today, priorityMode = "fifo", horizonDays = 600, machines = [], blocks = [], reservations = [], extraKnittingCredit = {}, stageCredit = {}, dueCutoff = null }) {
   const calendar = makeCalendar({ sundayOff: settings.sunday_off ?? true, saturdayOff: settings.saturday_off ?? false, holidays });
 
   const boardMode = Array.isArray(blocks) && blocks.length > 0 && Array.isArray(machines) && machines.length > 0;
@@ -100,12 +102,39 @@ export function computeSchedule({ jobs, resources, settings = {}, holidays = [],
       const completed = zero();
       const doneQty = Math.min(doneKnittedByKey[j.id] || 0, j.quantity);
       completed.knitting = doneQty;
-      return { ...j, completed, asOfToday: zero(), stageStart: {}, stageFinish: {}, startDate: null, completionDate: null, done: false };
+      // Real progress at every stage (PO Tukang handovers + Dispatch), so
+      // only the work actually left goes into each stage's queue. A later
+      // stage having real progress means the earlier ones did too, so lift
+      // upstream stages to at least the downstream value.
+      const sc = stageCredit[j.id];
+      if (sc) {
+        STAGES.forEach((s) => { completed[s] = Math.min(j.quantity, Math.max(completed[s], Math.floor(Number(sc[s]) || 0))); });
+        for (let k = STAGES.length - 2; k >= 0; k--) completed[STAGES[k]] = Math.max(completed[STAGES[k]], completed[STAGES[k + 1]]);
+      }
+      return { ...j, completed, asOfToday: { ...completed }, stageStart: {}, stageFinish: {}, startDate: null, completionDate: null, done: false };
     })
     .sort(comparator(priorityMode));
 
+  // Order Quote: `dueCutoff = { soId, deadline }` puts that (new) order behind
+  // every order due on/before its deadline but ahead of everything due later
+  // (or with no due date). Existing orders keep their relative order within
+  // each group. Only the quote simulation passes this.
+  if (dueCutoff && dueCutoff.deadline) {
+    const early = [], late = [], target = [];
+    live.forEach((o) => {
+      if (o.soId === dueCutoff.soId) target.push(o);
+      else if (o.dueDate && o.dueDate <= dueCutoff.deadline) early.push(o);
+      else late.push(o);
+    });
+    live.splice(0, live.length, ...early, ...target, ...late);
+  }
+
   const todayStr = today || fmt(calendar.next(new Date()));
-  const earliestSimDay = live.reduce((min, o) => { const es = o.earliestStart || todayStr; return es < min ? es : min; }, todayStr);
+  // With real per-stage progress supplied, every job's `completed` already
+  // describes the situation AS OF TODAY — replaying past days on top of it
+  // would count that work twice. So the simulation starts today.
+  const hasStageCredit = Object.keys(stageCredit || {}).length > 0;
+  const earliestSimDay = hasStageCredit ? todayStr : live.reduce((min, o) => { const es = o.earliestStart || todayStr; return es < min ? es : min; }, todayStr);
 
   // Board state: each active machine keeps an ordered queue of blocks it works through.
   let machineState = null;
@@ -317,12 +346,12 @@ export function computeSchedule({ jobs, resources, settings = {}, holidays = [],
         free -= give; workersUsed += give;
         o.stagePeak = o.stagePeak || {};
         o.stagePeak[stage] = Math.max(o.stagePeak[stage] || 0, give);
-        alloc.push({ soId: o.soId, soNumber: o.soNumber, styleName: o.styleName, pool: "-", unit: "workers", count: give, pieces: produced });
+        alloc.push({ soId: o.soId, soNumber: o.soNumber, styleName: o.styleName, pool: "-", unit: "workers", count: r1(give), pieces: produced });
       }
-      util[stage] = { workersAvail, workersUsed, demandWorkers, free: Math.max(0, workersAvail - workersUsed), utilization: workersAvail ? Math.round((workersUsed / workersAvail) * 1000) / 10 : 0, overCapacity: Math.max(0, demandWorkers - workersAvail), alloc };
+      util[stage] = { workersAvail: r1(workersAvail), workersUsed: r1(workersUsed), demandWorkers, free: r1(Math.max(0, workersAvail - workersUsed)), utilization: workersAvail ? Math.round((workersUsed / workersAvail) * 1000) / 10 : 0, overCapacity: r1(Math.max(0, demandWorkers - workersAvail)), alloc };
     });
 
-    live.forEach((o) => { if (!o.done && o.completed.packing >= o.quantity) { o.done = true; o.completionDate = dStr; } });
+    live.forEach((o) => { if (!o.done && o.completed.packing >= o.quantity) { o.done = true; o.completionDate = dStr; if (!o.stageFinish.packing) o.stageFinish.packing = dStr; } });
     if (dStr <= todayStr) live.forEach((o) => { o.asOfToday = { ...o.completed }; });
 
     let bottleneck = null, best = -1;
@@ -389,9 +418,9 @@ export function computeSchedule({ jobs, resources, settings = {}, holidays = [],
       demandPeak = Math.max(demandPeak, getDemand(d));
       const ut = avail ? (u / avail) * 100 : 0;
       peakUtil = Math.max(peakUtil, ut);
-      if (avail > 0 && u >= avail) { fullDays++; if (!firstFullDate) firstFullDate = d.date; }
+      if (avail > 0 && u >= avail - 0.05) { fullDays++; if (!firstFullDate) firstFullDate = d.date; }
     });
-    return { label, unit, workersAvail: avail, peakUsed, peakUtil: Math.round(peakUtil * 10) / 10, demandPeak, fullDays, firstFullDate };
+    return { label, unit, workersAvail: r1(avail), peakUsed: r1(peakUsed), peakUtil: Math.round(peakUtil * 10) / 10, demandPeak, fullDays, firstFullDate };
   };
   STAGES.forEach((s) => {
     if (s === "knitting") {
