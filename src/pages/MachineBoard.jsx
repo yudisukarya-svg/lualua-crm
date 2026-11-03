@@ -28,7 +28,7 @@ const fmtDate = (s) => (s ? new Date(s + "T00:00:00").toLocaleDateString("en-GB"
 const GAUGE_LABEL = { "7": "7 gauge", "5": "5 gauge", "12": "12 gauge" };
 
 export default function MachineBoard() {
-  const { schedule, raw, loading, refetch, stageBySo, effectiveResources } = useSchedule();
+  const { schedule, raw, loading, refetch, stageBySo, effectiveResources, effectiveStyles } = useSchedule();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [splitState, setSplitState] = useState({ open: false, block: null, qty: "", target: "", startAfter: "" });
@@ -69,7 +69,7 @@ export default function MachineBoard() {
   // pushes every later block on that machine forward or back with it. That
   // cascading isn't separate logic — it's the same day-by-day engine the
   // rest of the app already relies on, just fed different numbers.
-  const boardJobs = raw ? buildJobs(raw.salesOrders, raw.styles) : [];
+  const boardJobs = raw ? buildJobs(raw.salesOrders, effectiveStyles) : [];
   const dynamicBoardResult = raw ? computeSchedule({
     jobs: boardJobs, stageCredit: buildStageCredit(boardJobs, stageBySo),
     resources: effectiveResources, settings: raw.settings, holidays: raw.holidays,

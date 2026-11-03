@@ -90,17 +90,23 @@ export default function OrderQuote() {
         </div>
 
         <div className="mt-5">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Speed per worker for later stages (pcs/day) — pre-filled with your usual values; untick a stage this style doesn't go through.</p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Later stages — untick a stage this style doesn't go through. Stages marked "real team" use the whole team's actual output (last 30 days), shared with the orders ahead in the queue.</p>
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {LATER.map((s) => {
               const skipped = skip.includes(s);
+              const b = capacityBasis?.[s];
+              const onReal = b?.source === "real";
               return (
                 <div key={s} className="space-y-1.5">
                   <label className="flex items-center gap-2 text-xs font-medium">
                     <input type="checkbox" checked={!skipped} onChange={(e) => { setSkip((k) => e.target.checked ? k.filter((x) => x !== s) : [...k, s]); setResult(null); }} />
                     {STAGE_LABELS[s] || s}
                   </label>
-                  <Input type="number" min="0" disabled={skipped} value={skipped ? "" : rateOf(s)} onChange={(e) => { setRates((r) => ({ ...r, [s]: e.target.value })); setResult(null); }} />
+                  {onReal ? (
+                    <p className={`rounded-md border px-3 py-2 text-xs ${skipped ? "text-muted-foreground/50" : "text-muted-foreground"}`}>real team: <strong>{b.usedPcs}</strong> pcs/day</p>
+                  ) : (
+                    <Input type="number" min="0" disabled={skipped} value={skipped ? "" : rateOf(s)} onChange={(e) => { setRates((r) => ({ ...r, [s]: e.target.value })); setResult(null); }} placeholder="pcs/day per worker" />
+                  )}
                 </div>
               );
             })}

@@ -5,7 +5,7 @@ import { computeSchedule, makeCalendar } from "@/lib/scheduler";
 import { computeBlockActuals } from "@/lib/dynamicBoard";
 import { sumStageActualsBySo, buildStageCredit } from "@/lib/stageCredit";
 import { simulateQuote } from "@/lib/quoteSim";
-import { realPcsPerDay, calibrateResources, windowStart } from "@/lib/realCapacity";
+import { realPcsPerDay, calibrateResources, applyUniformRates, windowStart } from "@/lib/realCapacity";
 import { resourcesToMap } from "@/hooks/useResources";
 import { todayLocalStr } from "@/lib/utils";
 
@@ -190,27 +190,28 @@ export function useSchedule() {
   const today = todayLocalStr();
 
   // Configured capacity, lifted to real recent output where that's higher.
-  const { resources: effectiveResources, basis: capacityBasis } = useMemo(() => {
-    if (!raw) return { resources: {}, basis: {} };
-    return calibrateResources(raw.resources, buildJobs(raw.salesOrders, raw.styles), realPerDay);
+  const { resources: effectiveResources, basis: capacityBasis, styles: effectiveStyles, uniformRates: capacityUniform } = useMemo(() => {
+    if (!raw) return { resources: {}, basis: {}, styles: {}, uniformRates: {} };
+    const c = calibrateResources(raw.resources, buildJobs(raw.salesOrders, raw.styles), realPerDay);
+    return { ...c, styles: applyUniformRates(raw.styles, c.uniformRates) };
   }, [raw, realPerDay]);
 
   const schedule = useMemo(() => {
     if (!raw) return null;
-    const jobs = buildJobs(raw.salesOrders, raw.styles);
+    const jobs = buildJobs(raw.salesOrders, effectiveStyles);
     return computeSchedule({
       jobs, resources: effectiveResources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
       stageCredit: buildStageCredit(jobs, stageBySo),
     });
-  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources, effectiveStyles]);
 
   // What-if: recompute with a single SO's earliest start overridden.
   const runWhatIf = useCallback((soId, earliestStart, priorityMode) => {
     if (!raw) return null;
     const orders = raw.salesOrders.map((so) => so.id === soId ? { ...so, earliest_start: earliestStart } : so);
-    const jobs = buildJobs(orders, raw.styles);
+    const jobs = buildJobs(orders, effectiveStyles);
     const res = computeSchedule({
       jobs, resources: effectiveResources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: priorityMode || raw.settings.priority_mode || "fifo",
@@ -218,7 +219,7 @@ export function useSchedule() {
       stageCredit: buildStageCredit(jobs, stageBySo),
     });
     return res.orders.find((o) => o.id === soId) || null;
-  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources, effectiveStyles]);
 
   // What-if: recompute with extra workers added to one or more stage pools.
   // extra: { knitting_manual?, knitting_machine?, linking?, ... } of additional counts.
@@ -226,38 +227,40 @@ export function useSchedule() {
     if (!raw) return null;
     const resources = { ...effectiveResources };
     Object.entries(extra).forEach(([k, v]) => { resources[k] = (resources[k] || 0) + (Number(v) || 0); });
-    const jobs = buildJobs(raw.salesOrders, raw.styles);
+    const jobs = buildJobs(raw.salesOrders, effectiveStyles);
     return computeSchedule({
       jobs, resources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
       stageCredit: buildStageCredit(jobs, stageBySo),
     });
-  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources, effectiveStyles]);
 
   // What-if: recompute with machine assignments overridden { `${soId}:${styleId}`: machines }.
   const runMachineWhatIf = useCallback((override = {}) => {
     if (!raw) return null;
-    const jobs = buildJobs(raw.salesOrders, raw.styles, override);
+    const jobs = buildJobs(raw.salesOrders, effectiveStyles, override);
     return computeSchedule({
       jobs, resources: effectiveResources, settings: raw.settings,
       holidays: raw.holidays, today, priorityMode: raw.settings.priority_mode || "fifo",
       machines: raw.machines, blocks: effectiveBlocks, reservations: raw.reservations, extraKnittingCredit,
       stageCredit: buildStageCredit(jobs, stageBySo),
     });
-  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources, effectiveStyles]);
 
   // Quote for a NEW order that isn't in the system yet — see quoteSim.js.
   const runQuote = useCallback((input) => {
     if (!raw) return null;
     return simulateQuote({
-      raw: { ...raw, resources: effectiveResources }, today, buildJobs, effectiveBlocks, extraKnittingCredit,
-      makeStageCredit: (jobs) => buildStageCredit(jobs, stageBySo), input,
+      raw: { ...raw, resources: effectiveResources, styles: effectiveStyles }, today, buildJobs, effectiveBlocks, extraKnittingCredit,
+      makeStageCredit: (jobs) => buildStageCredit(jobs, stageBySo),
+      // stages on real capacity move every style at the same common speed
+      input: { ...input, rates: { ...(input.rates || {}), ...capacityUniform } },
     });
-  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources]);
+  }, [raw, today, effectiveBlocks, extraKnittingCredit, stageBySo, effectiveResources, effectiveStyles, capacityUniform]);
 
   return {
-    schedule, raw, runQuote, stageBySo, effectiveResources, capacityBasis, realPerDay, loading, refetch: load, runWhatIf, runCapacityWhatIf, runMachineWhatIf, runKnittingWhatIf: runMachineWhatIf,
+    schedule, raw, runQuote, stageBySo, effectiveResources, effectiveStyles, capacityBasis, realPerDay, loading, refetch: load, runWhatIf, runCapacityWhatIf, runMachineWhatIf, runKnittingWhatIf: runMachineWhatIf,
     dynamic: dynamicInfo, dynamicLoading, refetchDynamic: loadDynamic,
   };
 }

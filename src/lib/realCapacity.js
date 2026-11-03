@@ -12,9 +12,14 @@
 // only partly records (QC Final; Packing comes from Dispatch) from being
 // dragged down by missing data.
 //
-// The engine thinks in "workers × pcs/day per style", so real pcs/day is
-// turned into an equivalent worker count using the average speed of the
-// open orders at that stage.
+// For a stage on real capacity, the team is modelled as a shared pool of
+// pcs/day: every style moves through it at the same speed. The per-style
+// speeds in Styles (many set at 5–10 pcs/worker/day) are NOT used for that
+// stage — they made one slow-rated order hog the whole team for days and
+// created gaps between stages that don't happen on the floor (checked Nov
+// 2026). The engine still thinks in "workers × pcs/day", so the pool is
+// expressed as (real pcs/day ÷ a common speed) equivalent workers, with every
+// style's speed for that stage set to that common speed.
 // =============================================================================
 import { makeCalendar } from "@/lib/scheduler";
 
@@ -56,10 +61,12 @@ export function realPcsPerDay({ dailyRows, dispatchRows, today, settings = {}, h
 }
 
 // resources: configured map (workers per stage). jobs: open jobs (buildJobs).
-// → { resources: adjusted map, basis: { stage: { configuredPcs, realPcs, usedPcs, source } } }
+// → { resources: adjusted map, uniformRates: { stage: commonSpeed } for stages
+//     on real capacity, basis: { stage: { configuredPcs, realPcs, usedPcs, source } } }
 export function calibrateResources(resources, jobs, realPerDay) {
   const out = { ...resources };
   const basis = {};
+  const uniformRates = {};
   LATER_STAGES.forEach((s) => {
     // qty-weighted average speed of open orders that go through this stage
     let q = 0, qr = 0;
@@ -75,10 +82,25 @@ export function calibrateResources(resources, jobs, realPerDay) {
     const realPcs = realPerDay?.[s] || 0;
     if (avgRate > 0 && realPcs > configuredPcs) {
       out[s] = realPcs / avgRate;
+      uniformRates[s] = avgRate;
       basis[s] = { configuredPcs, realPcs, usedPcs: realPcs, source: "real" };
     } else {
       basis[s] = { configuredPcs, realPcs, usedPcs: configuredPcs, source: "configured" };
     }
   });
-  return { resources: out, basis };
+  return { resources: out, basis, uniformRates };
+}
+
+// stylesMap with each real-capacity stage's speed replaced by the common speed
+// (a style whose speed is 0 for that stage keeps 0).
+export function applyUniformRates(stylesMap, uniformRates) {
+  const keys = Object.keys(uniformRates || {});
+  if (keys.length === 0) return stylesMap;
+  const out = {};
+  Object.entries(stylesMap || {}).forEach(([id, st]) => {
+    const c = { ...st };
+    keys.forEach((s) => { if ((Number(c[s]) || 0) > 0) c[s] = uniformRates[s]; });
+    out[id] = c;
+  });
+  return out;
 }
