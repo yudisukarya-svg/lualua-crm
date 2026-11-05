@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useThumbUrls } from "@/components/archive/MediaGrid";
 import { fetchCustomerList, searchArchive, fmtDate } from "@/lib/archive";
 
-const PAGE = 24;
+const PAGE = 200;
 
 export default function Archive() {
   const [rows, setRows] = useState(null);
@@ -18,6 +17,7 @@ export default function Archive() {
   const [sort, setSort] = useState("recent");
   const [page, setPage] = useState(0);
   const [hits, setHits] = useState(null);
+  const [onlyNew, setOnlyNew] = useState(false);
 
   useEffect(() => { fetchCustomerList().then(setRows).catch((e) => setError(e.message)); }, []);
 
@@ -31,13 +31,14 @@ export default function Archive() {
   const filtered = useMemo(() => {
     let r = rows ?? [];
     if (q.trim()) r = r.filter((c) => c.customer_name?.toLowerCase().includes(q.trim().toLowerCase()));
+    if (onlyNew) r = r.filter((c) => Number(c.unread) > 0);
     if (sort === "name") r = [...r].sort((a, b) => a.customer_name.localeCompare(b.customer_name));
     if (sort === "styles") r = [...r].sort((a, b) => b.styles - a.styles);
     return r;
-  }, [rows, q, sort]);
+  }, [rows, q, sort, onlyNew]);
   const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
-  const thumbs = useThumbUrls(pageRows.map((c) => ({ thumb: c.cover_thumb })));
   const totalStyles = (rows ?? []).reduce((a, c) => a + Number(c.styles), 0);
+  const newCustomers = (rows ?? []).filter((c) => Number(c.unread) > 0).length;
 
   return (
     <>
@@ -57,6 +58,10 @@ export default function Archive() {
             <option value="name">Urut: nama A–Z</option>
             <option value="styles">Urut: jumlah style</option>
           </select>
+          <label className="flex items-center gap-2 whitespace-nowrap text-sm">
+            <input type="checkbox" checked={onlyNew} onChange={(e) => { setOnlyNew(e.target.checked); setPage(0); }} />
+            Hanya yang ada update{newCustomers ? ` (${newCustomers})` : ""}
+          </label>
         </div>
         {hits && (
           <div className="mt-3 border-t pt-3">
@@ -78,25 +83,25 @@ export default function Archive() {
        !rows ? <p className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</p> :
        filtered.length === 0 ? <EmptyState title="Customer tidak ditemukan" /> : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {pageRows.map((c) => (
-              <Link key={c.id} to={`/archive/customer/${c.id}`} className="overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md">
-                <div className="flex h-32 items-center justify-center bg-muted">
-                  {c.cover_thumb && thumbs[c.cover_thumb]
-                    ? <img src={thumbs[c.cover_thumb]} alt="" loading="lazy" className="h-full w-full object-cover" />
-                    : <ImageIcon className="h-6 w-6 text-muted-foreground" aria-hidden="true" />}
-                </div>
-                <div className="space-y-1.5 p-4">
-                  <p className="font-semibold">{c.customer_name}</p>
-                  <p className="text-sm text-muted-foreground">{c.styles} style · update {fmtDate(c.last_activity)}</p>
-                  <div className="flex flex-wrap gap-1.5 text-xs">
-                    <span className="rounded-full bg-muted px-2 py-0.5">{c.photos} foto</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5">{c.files} file</span>
-                    {Number(c.open_notes) > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-900">{c.open_notes} catatan aktif</span>}
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {pageRows.map((c) => {
+              const unread = Number(c.unread) || 0;
+              return (
+                <Link key={c.id} to={`/archive/customer/${c.id}`}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-muted ${unread ? "border-primary/50 bg-primary/5" : "bg-card"}`}>
+                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${unread ? "bg-primary" : "bg-transparent"}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate ${unread ? "font-semibold" : "font-medium"}`} title={c.customer_name}>{c.customer_name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {c.styles} style{Number(c.photos) ? ` · ${c.photos} foto` : ""}{Number(c.files) ? ` · ${c.files} file` : ""}
+                      {c.last_activity ? ` · ${fmtDate(c.last_activity)}` : ""}
+                    </p>
                   </div>
-                </div>
-              </Link>
-            ))}
+                  {unread > 0 && <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground">{unread} baru</span>}
+                  {Number(c.open_notes) > 0 && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900" title="Catatan aktif">{c.open_notes}</span>}
+                </Link>
+              );
+            })}
           </div>
           {filtered.length > PAGE && (
             <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">

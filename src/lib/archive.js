@@ -294,3 +294,4 @@ export function fmtDate(v) {
   const [y, m, d] = String(v).slice(0, 10).split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
+export const markCustomerRead = (id) => rpc("archive_mark_read", { p_customer: id });

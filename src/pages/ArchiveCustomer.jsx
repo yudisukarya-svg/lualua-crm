@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import MediaGrid, { useThumbUrls } from "@/components/archive/MediaGrid";
 import { LabelDialog, NoteDialog, PoDialog, StyleDialog } from "@/components/archive/Dialogs";
-import { fetchCustomerPage, fmtDate, LABEL_ITEMS, NOTE_TOPICS, PO_STATUS, labelOf } from "@/lib/archive";
+import { fetchCustomerPage, markCustomerRead, fmtDate, LABEL_ITEMS, NOTE_TOPICS, PO_STATUS, labelOf } from "@/lib/archive";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -26,6 +26,10 @@ export default function ArchiveCustomer() {
   const [error, setError] = useState(null);
   const load = useCallback(() => fetchCustomerPage(id).then(setData).catch((e) => setError(e.message)), [id]);
   useEffect(() => { load(); }, [load]);
+  // Ambil update dari admin lain sejak kunjungan terakhir, lalu tandai sudah dibaca
+  const [updates, setUpdates] = useState([]);
+  useEffect(() => { setUpdates([]); markCustomerRead(id).then((u) => setUpdates(u ?? [])).catch(() => {}); }, [id]);
+  const newStyles = useMemo(() => new Set(updates.map((u) => u.style_id).filter(Boolean)), [updates]);
 
   if (error) return <EmptyState title="Gagal memuat" description={error} />;
   if (!data) return <p className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</p>;
@@ -40,6 +44,8 @@ export default function ArchiveCustomer() {
         <Button variant="outline" asChild><Link to={`/customers/${id}`}>Buka di Customers</Link></Button>
       </PageHeader>
 
+      {updates.length > 0 && <UpdatesCard updates={updates} onClose={() => setUpdates([])} />}
+
       <div role="tablist" aria-label="Bagian arsip" className="mb-5 flex flex-wrap gap-1 border-b">
         {TABS.map((t) => (
           <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setParams({ tab: t.key }, { replace: true })}
@@ -49,14 +55,14 @@ export default function ArchiveCustomer() {
         ))}
       </div>
 
-      {tab === "styles" && <StylesTab styles={data.styles} customerId={id} onSaved={load} />}
+      {tab === "styles" && <StylesTab styles={data.styles} customerId={id} onSaved={load} newStyles={newStyles} />}
       {tab === "label" && <LabelTab customerId={id} rows={data.label_packing} styles={data.styles} onSaved={load} />}
       {tab === "notes" && <NotesTab customer={c} notes={data.notes} pos={data.pos} styles={data.styles} onSaved={load} />}
     </>
   );
 }
 
-function StylesTab({ styles, customerId, onSaved }) {
+function StylesTab({ styles, customerId, onSaved, newStyles }) {
   const thumbs = useThumbUrls(styles.map((s) => ({ thumb: s.cover_thumb })));
   const [open, setOpen] = useState(false);
   const dialog = <StyleDialog open={open} onOpenChange={setOpen} customerId={customerId} onSaved={onSaved} />;
@@ -76,7 +82,7 @@ function StylesTab({ styles, customerId, onSaved }) {
               : <ImageIcon className="h-6 w-6 text-muted-foreground" aria-hidden="true" />}
           </div>
           <div className="space-y-1 p-4">
-            <p className="font-semibold">{s.name}</p>
+            <p className="font-semibold">{s.name}{newStyles?.has(s.id) && <span className="ml-2 rounded-full bg-primary px-1.5 py-0.5 align-middle text-[11px] font-semibold text-primary-foreground">baru</span>}</p>
             <p className="text-sm text-muted-foreground">
               {[s.knitting_method === "machine" ? "Mesin" : s.knitting_method === "manual" ? "Manual" : s.knitting_method, s.knitting_gauge && `gauge ${s.knitting_gauge}`].filter(Boolean).join(" · ") || "—"}
             </p>
@@ -282,5 +288,28 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
       <NoteDialog open={noteOpen} onOpenChange={setNoteOpen} customerId={customer.id} styles={styles} onSaved={onSaved} />
       <PoDialog open={poOpen} onOpenChange={setPoOpen} customerId={customer.id} onSaved={onSaved} />
     </>
+  );
+}
+
+const KIND_LABEL = { entri: "Entri", foto: "Foto", file: "File", spek: "Spek", label: "Label & packing", catatan: "Catatan", po: "PO customer", program: "Program mesin", style: "Style baru" };
+
+function UpdatesCard({ updates, onClose }) {
+  return (
+    <Card className="mb-5 border-primary/40 bg-primary/5 p-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">{updates.length} update baru sejak kunjungan terakhir Anda</p>
+        <Button variant="ghost" size="sm" onClick={onClose}>Tutup</Button>
+      </div>
+      <ul className="max-h-56 space-y-1 overflow-y-auto text-sm">
+        {updates.map((u, i) => (
+          <li key={i} className="flex flex-wrap gap-x-2">
+            <span className="text-muted-foreground">{fmtDate(u.at)} · {u.by}</span>
+            <span className="font-medium">{KIND_LABEL[u.kind] ?? u.kind}</span>
+            {u.style_id ? <Link to={`/archive/style/${u.style_id}`} className="text-primary hover:underline">{u.style_name}</Link> : null}
+            {u.label && <span className="text-muted-foreground">— {u.label}</span>}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
