@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import MediaGrid, { openMedia } from "@/components/archive/MediaGrid";
 import { EntryDialog, SpecDialog, DocDialog, ProgramDialog, NoteDialog } from "@/components/archive/Dialogs";
 import {
-  fetchStylePage, fmtDate, formatBytes, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, STAGES, programUrl,
+  fetchStylePage, fmtDate, formatBytes, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, stageList, programUrl,
 } from "@/lib/archive";
 import { cn } from "@/lib/utils";
 
@@ -116,15 +116,19 @@ export default function ArchiveStyle() {
                     </div>
                     {data.can_see_cost && (
                       <div className="min-w-[280px] flex-1">
-                        <div className="grid grid-cols-5 gap-2 border-b pb-1 text-xs text-muted-foreground">
-                          {STAGES.map((st) => <span key={st}>{st}</span>)}<span className="font-medium text-foreground">Total</span>
-                        </div>
-                        <div className="grid grid-cols-5 gap-2 pt-1.5 text-sm">
-                          {STAGES.map((st) => <span key={st}>{st === "Rajut" && e.costs?.[st] && Number(e.costs[st].max) === 0 ? "mesin" : costRange(e.costs?.[st])}</span>)}
-                          <span className="font-semibold">{total ? costRange(total) : "—"}</span>
-                        </div>
+                        {e.costs ? (
+                          <div className="flex flex-wrap gap-1.5 text-sm">
+                            {stageList(e.costs).map((st) => (
+                              <span key={st} className="rounded-md border bg-background px-2 py-1">
+                                <span className="text-xs text-muted-foreground">{st}</span>{" "}
+                                <span className="font-medium">{st === "Rajut" && Number(e.costs[st].max) === 0 ? "mesin" : costRange(e.costs[st])}</span>
+                              </span>
+                            ))}
+                            <span className="rounded-md bg-primary/10 px-2 py-1 font-semibold text-primary">Total {costRange(total)}</span>
+                          </div>
+                        ) : <p className="text-sm text-muted-foreground">—</p>}
                         <p className="mt-1.5 text-xs text-green-800">
-                          {e.costs ? `Otomatis dari PO Tukang · ongkos per pcs yang berlaku ${fmtDate(e.entry_date)}` : "Belum ada PO Tukang sebelum tanggal ini."}
+                          {e.costs ? `Ongkos tukang per pcs dari PO Tukang yang berlaku ${fmtDate(e.entry_date)}` : "Belum ada PO Tukang sebelum tanggal ini."}
                         </p>
                       </div>
                     )}
@@ -138,6 +142,26 @@ export default function ArchiveStyle() {
 
         {/* ---------- Samping ---------- */}
         <aside className="flex min-w-0 flex-[2] flex-col gap-4">
+          {data.can_see_cost && (
+            <Card className="p-4">
+              <h2 className="mb-1 font-semibold">Ongkos tukang per pcs (terkini)</h2>
+              <p className="mb-2 text-xs text-muted-foreground">Dari PO Tukang, ongkos terakhir per proses. Hanya terlihat oleh admin & sales.</p>
+              {!data.current_costs ? <p className="text-sm text-muted-foreground">Belum ada PO Tukang untuk style ini.</p> : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {stageList(data.current_costs).map((st) => (
+                      <tr key={st} className="border-b last:border-0">
+                        <td className="py-1.5 pr-2 text-muted-foreground">{st}</td>
+                        <td className="py-1.5 pr-2 text-right font-medium">{st === "Rajut" && Number(data.current_costs[st].max) === 0 ? "mesin" : costRange(data.current_costs[st])}</td>
+                        <td className="whitespace-nowrap py-1.5 text-right text-xs text-muted-foreground">{data.current_costs[st].so} · {fmtDate(data.current_costs[st].date)}</td>
+                      </tr>
+                    ))}
+                    <tr><td className="pt-2 font-semibold">Total</td><td className="pt-2 text-right font-semibold text-primary">{costRange(costTotal(data.current_costs))}</td><td /></tr>
+                  </tbody>
+                </table>
+              )}
+            </Card>
+          )}
           <Card className="border-green-200 bg-green-50/70 p-4">
             <h2 className="mb-2 font-semibold text-green-900">Kesiapan re-order</h2>
             <ul className="space-y-1.5 text-sm">

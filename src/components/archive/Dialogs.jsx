@@ -379,3 +379,37 @@ export function ProgramDialog({ open, onOpenChange, style, customerName, suggest
     </Dialog>
   );
 }
+
+// ---------------- Style baru ----------------
+export function StyleDialog({ open, onOpenChange, customerId, onSaved }) {
+  const [f, setF] = useState({});
+  const { busy, save } = useSaver(onOpenChange, onSaved);
+  useEffect(() => { if (open) setF({ name: "", knitting_method: "machine", knitting_gauge: "" }); }, [open]);
+  const submit = () => save(async () => {
+    if (!f.name.trim()) throw new Error("Nama style wajib diisi.");
+    const { error } = await supabase.from("production_styles").insert({
+      name: f.name.trim(), customer_id: customerId, knitting_method: f.knitting_method, knitting_gauge: f.knitting_gauge || null,
+    });
+    if (error) throw error;
+    return `Style ${f.name.trim()} ditambahkan`;
+  });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Style baru</DialogTitle>
+          <DialogDescription>Pakai nama yang sama dengan nama item di Zoho / PO Tukang supaya ongkos tukang dan SO tersambung otomatis.</DialogDescription>
+        </DialogHeader>
+        <Field label="Nama style (wajib)" htmlFor="st-name"><Input id="st-name" value={f.name || ""} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="mis. Granita Maxi Dress" /></Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Metode rajut" htmlFor="st-method"><Sel id="st-method" value={f.knitting_method || "machine"} onChange={(v) => setF({ ...f, knitting_method: v })} options={[{ value: "machine", label: "Mesin" }, { value: "manual", label: "Manual" }]} /></Field>
+          <Field label="Gauge" htmlFor="st-gauge"><Input id="st-gauge" value={f.knitting_gauge || ""} onChange={(e) => setF({ ...f, knitting_gauge: e.target.value })} placeholder="mis. 7" /></Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Batal</Button>
+          <Button onClick={submit} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Simpan</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

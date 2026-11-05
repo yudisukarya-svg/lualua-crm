@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Printer, ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchStylePage, getSignedUrls, fmtDate, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, STAGES, isImage } from "@/lib/archive";
+import { fetchStylePage, getSignedUrls, fmtDate, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, stageList, isImage } from "@/lib/archive";
 
 // One printable page for production: specs, program, latest photos, label & packing, approvals.
 export default function ArchiveStylePrint() {
@@ -55,8 +55,8 @@ export default function ArchiveStylePrint() {
           <p>{program ? `REV ${program.revision || "—"} · ${program.name} · order ${program.order_no || "—"} · ${fmtDate(program.date)}` : s.knitting_method === "manual" ? "Rajut manual" : "BELUM ADA PROGRAM"}</p>
           {data.can_see_cost && (
             <>
-              <h2 className="mb-1 mt-3 font-bold">Biaya per pcs (PO Tukang, terbaru)</h2>
-              <p>{STAGES.map((st) => `${st}: ${costRange(data.current_costs?.[st])}`).join(" · ")}</p>
+              <h2 className="mb-1 mt-3 font-bold">Ongkos tukang per pcs (PO Tukang, terbaru)</h2>
+              <p>{stageList(data.current_costs).map((st) => `${st}: ${costRange(data.current_costs[st])}`).join(" · ") || "—"}</p>
               <p className="font-medium">Total: {total ? costRange(total) : "—"}</p>
             </>
           )}

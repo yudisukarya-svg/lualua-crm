@@ -8,7 +8,7 @@ import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import MediaGrid, { useThumbUrls } from "@/components/archive/MediaGrid";
-import { LabelDialog, NoteDialog, PoDialog } from "@/components/archive/Dialogs";
+import { LabelDialog, NoteDialog, PoDialog, StyleDialog } from "@/components/archive/Dialogs";
 import { fetchCustomerPage, fmtDate, LABEL_ITEMS, NOTE_TOPICS, PO_STATUS, labelOf } from "@/lib/archive";
 import { cn } from "@/lib/utils";
 
@@ -49,17 +49,24 @@ export default function ArchiveCustomer() {
         ))}
       </div>
 
-      {tab === "styles" && <StylesTab styles={data.styles} />}
+      {tab === "styles" && <StylesTab styles={data.styles} customerId={id} onSaved={load} />}
       {tab === "label" && <LabelTab customerId={id} rows={data.label_packing} styles={data.styles} onSaved={load} />}
       {tab === "notes" && <NotesTab customer={c} notes={data.notes} pos={data.pos} styles={data.styles} onSaved={load} />}
     </>
   );
 }
 
-function StylesTab({ styles }) {
+function StylesTab({ styles, customerId, onSaved }) {
   const thumbs = useThumbUrls(styles.map((s) => ({ thumb: s.cover_thumb })));
-  if (!styles.length) return <EmptyState title="Belum ada style" description="Tambahkan style di menu Production → Styles, pilih customer ini." />;
+  const [open, setOpen] = useState(false);
+  const dialog = <StyleDialog open={open} onOpenChange={setOpen} customerId={customerId} onSaved={onSaved} />;
+  if (!styles.length) return (<>
+    <EmptyState title="Belum ada style" description="Tambahkan style pertama untuk customer ini."
+      action={<Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Style baru</Button>} />{dialog}</>);
   return (
+    <>
+    <div className="mb-4 flex justify-end"><Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Style baru</Button></div>
+    {dialog}
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {styles.map((s) => (
         <Link key={s.id} to={`/archive/style/${s.id}`} className="overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md">
@@ -82,6 +89,7 @@ function StylesTab({ styles }) {
         </Link>
       ))}
     </div>
+    </>
   );
 }
 

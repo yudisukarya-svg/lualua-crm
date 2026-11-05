@@ -44,7 +44,14 @@ export const PO_STATUS = [
   { value: "revisi", label: "Revisi" },
   { value: "selesai", label: "Selesai dikirim" },
 ];
-export const STAGES = ["Rajut", "Linking", "Finishing", "Steam"];
+// Urutan proses seperti di PO Tukang; proses lain yang muncul di PO Tukang ikut ditampilkan di belakang
+export const STAGES = ["Rajut", "QC Rajut", "Linking", "QC Linking", "Finishing", "QC Finishing", "Steam", "Labelling", "Jahit",
+  "Aksesories", "Aksesories - Plaket", "Aksesories - Tali", "QC Final"];
+export function stageList(...costObjs) {
+  const found = new Set();
+  for (const c of costObjs) for (const k of Object.keys(c || {})) found.add(k);
+  return [...STAGES.filter((s) => found.has(s)), ...[...found].filter((s) => !STAGES.includes(s)).sort()];
+}
 
 export const labelOf = (list, v) => list.find((x) => x.value === v)?.label ?? v ?? "—";
 
@@ -64,7 +71,7 @@ export function costRange(c) {
 }
 export function costTotal(costs) {
   if (!costs) return null;
-  const vals = STAGES.map((s) => costs[s]).filter(Boolean);
+  const vals = Object.values(costs).filter(Boolean);
   if (!vals.length) return null;
   return { min: vals.reduce((a, c) => a + Number(c.min), 0), max: vals.reduce((a, c) => a + Number(c.max), 0) };
 }
