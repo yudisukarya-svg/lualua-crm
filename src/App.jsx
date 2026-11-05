@@ -24,6 +24,10 @@ import OrderQuote from "@/pages/OrderQuote";
 import Resources from "@/pages/Resources";
 import PlanningCalendar from "@/pages/PlanningCalendar";
 import NotFound from "@/pages/NotFound";
+import Archive from "@/pages/Archive";
+import ArchiveCustomer from "@/pages/ArchiveCustomer";
+import ArchiveStyle from "@/pages/ArchiveStyle";
+import ArchiveStylePrint from "@/pages/ArchiveStylePrint";
 
 export default function App() {
   return (
@@ -39,6 +43,9 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/customers/:id" element={<CustomerDetail />} />
+            <Route path="/archive" element={<Archive />} />
+            <Route path="/archive/customer/:id" element={<ArchiveCustomer />} />
+            <Route path="/archive/style/:id" element={<ArchiveStyle />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/reports" element={<Reports />} />
@@ -54,6 +61,8 @@ export default function App() {
             <Route path="/planning/resources" element={<Resources />} />
             <Route path="/planning/calendar" element={<PlanningCalendar />} />
           </Route>
+
+          <Route path="/archive/style/:id/print" element={<ProtectedRoute><ArchiveStylePrint /></ProtectedRoute>} />
 
           <Route path="/404" element={<NotFound />} />
           <Route path="*" element={<Navigate to="/404" replace />} />
