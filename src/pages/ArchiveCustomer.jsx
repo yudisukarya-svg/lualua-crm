@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Image as ImageIcon, Loader2, Plus, Copy, Check, History } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon, Loader2, Plus, Copy, Check, History, ExternalLink, Pencil, StickyNote } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/PageHeader";
@@ -185,7 +185,7 @@ function LabelTab({ customerId, rows, styles, onSaved }) {
 
 function NotesTab({ customer, notes, pos, styles, onSaved }) {
   const { toast } = useToast();
-  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDlg, setNoteDlg] = useState(null);   // { mode, note }
   const [poOpen, setPoOpen] = useState(false);
   const [topic, setTopic] = useState("all");
   const [order, setOrder] = useState("new");
@@ -203,7 +203,8 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
   }
   async function copyReminder(n) {
     const text = `Halo ${customer?.contact_person || customer?.customer_name}, mengingatkan kembali percakapan kita tanggal ${fmtDate(n.note_date)}` +
-      `${n.style_name ? ` mengenai ${n.style_name}` : ""}: ${n.title}.${n.summary ? ` ${n.summary}` : ""} Terima kasih.`;
+      `${n.style_name ? ` mengenai ${n.style_name}` : ""}: ${n.title}.${n.summary ? ` ${n.summary}` : ""}` +
+      `${(n.links ?? []).map((l) => `\n${l.label ? `${l.label}: ` : ""}${l.url}`).join("")}\nTerima kasih.`;
     try { await navigator.clipboard.writeText(text); setCopied(n.id); setTimeout(() => setCopied(null), 2000); }
     catch { toast({ title: "Salin manual", description: text }); }
   }
@@ -212,7 +213,8 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
     <>
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={() => setPoOpen(true)}><Plus className="h-4 w-4" /> Upload PO customer</Button>
-        <Button onClick={() => setNoteOpen(true)}><Plus className="h-4 w-4" /> Simpan screenshot</Button>
+        <Button variant="outline" onClick={() => setNoteDlg({ mode: "whatsapp" })}><Plus className="h-4 w-4" /> Simpan screenshot</Button>
+        <Button onClick={() => setNoteDlg({ mode: "catatan" })}><StickyNote className="h-4 w-4" /> Catatan / link</Button>
       </div>
 
       <Card className="mb-5 p-4">
@@ -256,7 +258,7 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
         </select>
       </div>
 
-      {list.length === 0 ? <EmptyState title="Belum ada percakapan tersimpan" description="Simpan screenshot WhatsApp yang berisi persetujuan atau keputusan customer." /> : (
+      {list.length === 0 ? <EmptyState title="Belum ada percakapan atau catatan" description="Simpan screenshot WhatsApp, atau tulis catatan dan link penting dari customer." /> : (
         <div className="space-y-3">
           {list.map((n) => (
             <Card key={n.id} className="flex flex-wrap gap-4 p-4">
@@ -268,8 +270,19 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
                   <span className={cn("rounded-full px-2 py-0.5 text-xs", n.status === "open" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-900")}>
                     {n.status === "open" ? "Masih relevan" : "Selesai"}</span>
                 </div>
-                <p className="font-semibold">{n.title}</p>
+                <p className="font-semibold">{n.kind === "catatan" && <StickyNote className="mr-1.5 inline h-4 w-4 text-muted-foreground" aria-label="Catatan" />}{n.title}</p>
                 {n.summary && <p className="text-sm text-muted-foreground">{n.summary}</p>}
+                {n.body && <p className="whitespace-pre-wrap break-words text-sm"><Linkify text={n.body} /></p>}
+                {n.links?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {n.links.map((l, i) => (
+                      <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" title={l.url}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-primary hover:bg-muted">
+                        <ExternalLink className="h-3 w-3 shrink-0" /><span className="truncate">{l.label || hostOf(l.url)}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Terkait: {[n.style_name && <Link key="s" to={`/archive/style/${n.style_id}`} className="text-primary hover:underline">{n.style_name}</Link>, n.so_number].filter(Boolean).reduce((a, x, i) => (i ? [...a, " · ", x] : [x]), []) }
                   {!n.style_name && !n.so_number && "—"}
@@ -279,13 +292,15 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
                     {copied === n.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} Salin pesan pengingat ke WhatsApp</Button>
                   <Button size="sm" variant="outline" onClick={() => setStatus("customer_notes", n.id, n.status === "open" ? "done" : "open")}>
                     {n.status === "open" ? "Tandai selesai" : "Buka lagi"}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setNoteDlg({ note: n })}><Pencil className="h-4 w-4" /> Edit</Button>
                 </div>
               </div>
             </Card>
           ))}
         </div>
       )}
-      <NoteDialog open={noteOpen} onOpenChange={setNoteOpen} customerId={customer.id} styles={styles} onSaved={onSaved} />
+      <NoteDialog open={!!noteDlg} onOpenChange={(o) => { if (!o) setNoteDlg(null); }} mode={noteDlg?.mode} note={noteDlg?.note}
+        customerId={customer.id} styles={styles} onSaved={onSaved} />
       <PoDialog open={poOpen} onOpenChange={setPoOpen} customerId={customer.id} onSaved={onSaved} />
     </>
   );
@@ -312,4 +327,16 @@ function UpdatesCard({ updates, onClose }) {
       </ul>
     </Card>
   );
+}
+
+function hostOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+// Ubah URL di dalam tulisan jadi link yang bisa diklik (tanpa HTML mentah)
+function Linkify({ text }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((p, i) => (/^https?:\/\//.test(p)
+    ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="text-primary underline">{p}</a>
+    : <span key={i}>{p}</span>));
 }

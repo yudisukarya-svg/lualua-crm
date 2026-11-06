@@ -234,36 +234,93 @@ export function LabelDialog({ open, onOpenChange, customerId, styles = [], initi
 }
 
 // ---------------- Percakapan penting (screenshot WA) ----------------
-export function NoteDialog({ open, onOpenChange, customerId, styles = [], defaultStyleId, onSaved }) {
+export function normalizeUrl(u) {
+  const t = (u || "").trim();
+  if (!t) return "";
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`;
+}
+
+// mode "whatsapp" = simpan screenshot; mode "catatan" = catatan teks + link + lampiran (opsional)
+// note = data lama kalau sedang edit
+export function NoteDialog({ open, onOpenChange, customerId, styles = [], defaultStyleId, onSaved, mode = "whatsapp", note = null }) {
   const up = useBatchUpload();
   const [f, setF] = useState({});
   const { busy, save } = useSaver(onOpenChange, onSaved);
+  const kind = note?.kind || mode;
+  const isText = kind === "catatan";
   useEffect(() => {
-    if (open) { setF({ note_date: todayStr(), topic: "warna_bahan", title: "", summary: "", style_id: defaultStyleId ?? "", so_number: "" }); up.reset(); }
+    if (!open) return;
+    up.reset();
+    if (note) setF({ note_date: note.note_date, topic: note.topic, title: note.title || "", summary: note.summary || "", body: note.body || "",
+                     style_id: note.style_id || "", so_number: note.so_number || "",
+                     links: (note.links?.length ? note.links : [{ url: "", label: "" }]).map((l) => ({ url: l.url || "", label: l.label || "" })) });
+    else setF({ note_date: todayStr(), topic: isText ? "lainnya" : "warna_bahan", title: "", summary: "", body: "",
+                style_id: defaultStyleId ?? "", so_number: "", links: [{ url: "", label: "" }] });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const links = f.links || [];
+  const setLink = (i, k, v) => setF({ ...f, links: links.map((l, j) => (j === i ? { ...l, [k]: v } : l)) });
+
   const submit = () => save(async () => {
     if (!f.note_date || !f.title.trim()) throw new Error("Tanggal dan judul wajib diisi.");
-    const { data, error } = await supabase.from("customer_notes").insert({
-      customer_id: customerId, style_id: f.style_id || null, so_number: f.so_number || null, note_date: f.note_date,
+    const cleanLinks = links.filter((l) => l.url.trim()).map((l) => ({ url: normalizeUrl(l.url), label: l.label.trim() || null }));
+    for (const l of cleanLinks) { try { new URL(l.url); } catch { throw new Error(`Link tidak valid: ${l.url}`); } }
+    const row = {
+      style_id: f.style_id || null, so_number: f.so_number || null, note_date: f.note_date,
       topic: f.topic, title: f.title.trim(), summary: f.summary || null,
-    }).select("id").single();
-    if (error) throw error;
-    const r = await up.run(() => ({ customerId, styleId: f.style_id || null, noteId: data.id, section: "whatsapp", category: "screenshot", mediaDate: f.note_date }));
+      body: f.body?.trim() || null, links: cleanLinks,
+    };
+    let id = note?.id;
+    if (id) {
+      const { error } = await supabase.from("customer_notes").update({ ...row, updated_at: new Date().toISOString() }).eq("id", id);
+      if (error) throw error;
+    } else {
+      if (!isText && !up.items.length) throw new Error("Pilih screenshot-nya, atau gunakan tombol \"Catatan / link\" untuk catatan tanpa gambar.");
+      const { data, error } = await supabase.from("customer_notes").insert({ ...row, customer_id: customerId, kind }).select("id").single();
+      if (error) throw error;
+      id = data.id;
+    }
+    if (!up.items.length) return note ? "Catatan diperbarui." : "Catatan tersimpan.";
+    const r = await up.run(() => ({ customerId, styleId: f.style_id || null, noteId: id, section: "whatsapp",
+                                    category: isText ? "lampiran" : "screenshot", mediaDate: f.note_date }));
     return summaryText(r);
   });
+
+  const title = note ? "Edit catatan" : isText ? "Tambah catatan / link" : "Simpan screenshot percakapan";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader><DialogTitle>Simpan percakapan penting</DialogTitle></DialogHeader>
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+        <DialogHeader><DialogTitle>{title}</DialogTitle>
+          {isText && !note && <DialogDescription>Untuk tulisan, link (Google Drive, email, Pinterest, dll), atau catatan apa saja. Lampiran tidak wajib.</DialogDescription>}
+        </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Tanggal percakapan (wajib)" htmlFor="nt-date"><Input id="nt-date" type="date" value={f.note_date || ""} onChange={(e) => setF({ ...f, note_date: e.target.value })} /></Field>
+          <Field label="Tanggal (wajib)" htmlFor="nt-date"><Input id="nt-date" type="date" value={f.note_date || ""} onChange={(e) => setF({ ...f, note_date: e.target.value })} /></Field>
           <Field label="Topik" htmlFor="nt-topic"><Sel id="nt-topic" value={f.topic || "lainnya"} onChange={(v) => setF({ ...f, topic: v })} options={NOTE_TOPICS} /></Field>
           <Field label="Style terkait" htmlFor="nt-style"><Sel id="nt-style" value={f.style_id || ""} onChange={(v) => setF({ ...f, style_id: v })} options={[{ value: "", label: "— tidak spesifik —" }, ...styles.map((s) => ({ value: s.id, label: s.name }))]} /></Field>
           <Field label="SO terkait" htmlFor="nt-so"><Input id="nt-so" placeholder="SO-0xxxx" value={f.so_number || ""} onChange={(e) => setF({ ...f, so_number: e.target.value })} /></Field>
         </div>
-        <Field label="Judul singkat (wajib)" htmlFor="nt-title"><Input id="nt-title" placeholder="mis. Customer setuju warna Pearl" value={f.title || ""} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
-        <Field label="Ringkasan" htmlFor="nt-sum"><Textarea id="nt-sum" rows={2} value={f.summary || ""} onChange={(e) => setF({ ...f, summary: e.target.value })} /></Field>
-        <FilesField uploader={up} accept="image/*,.heic,.heif" hint="Screenshot WhatsApp · ±100 KB, teks tetap tajam" />
+        <Field label="Judul singkat (wajib)" htmlFor="nt-title"><Input id="nt-title" placeholder={isText ? "mis. Link moodboard koleksi SS27" : "mis. Customer setuju warna Pearl"} value={f.title || ""} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
+        {isText ? (
+          <Field label="Isi catatan" htmlFor="nt-body" hint="Bebas: tulisan panjang, poin-poin, atau tempel teks dari email/WhatsApp. Link di dalam tulisan otomatis bisa diklik.">
+            <Textarea id="nt-body" rows={7} value={f.body || ""} onChange={(e) => setF({ ...f, body: e.target.value })} />
+          </Field>
+        ) : (
+          <Field label="Ringkasan" htmlFor="nt-sum"><Textarea id="nt-sum" rows={2} value={f.summary || ""} onChange={(e) => setF({ ...f, summary: e.target.value })} /></Field>
+        )}
+        <div className="space-y-1.5">
+          <Label>Link</Label>
+          {links.map((l, i) => (
+            <div key={i} className="flex gap-2">
+              <Input aria-label={`Link ${i + 1}`} placeholder="https://…" value={l.url} onChange={(e) => setLink(i, "url", e.target.value)} className="flex-[2]" />
+              <Input aria-label={`Keterangan link ${i + 1}`} placeholder="keterangan (opsional)" value={l.label} onChange={(e) => setLink(i, "label", e.target.value)} className="flex-1" />
+              <Button type="button" variant="ghost" size="icon" aria-label="Hapus link" onClick={() => setF({ ...f, links: links.length > 1 ? links.filter((_, j) => j !== i) : [{ url: "", label: "" }] })}>
+                <Trash2 className="h-4 w-4" /></Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setF({ ...f, links: [...links, { url: "", label: "" }] })}><Plus className="h-4 w-4" /> Tambah link</Button>
+        </div>
+        {isText
+          ? <FilesField uploader={up} hint={note ? "Tambah lampiran baru (opsional). Lampiran lama tetap ada." : "Lampiran opsional: foto, screenshot, PDF, Excel, Word"} />
+          : <FilesField uploader={up} accept="image/*,.heic,.heif" hint={note ? "Tambah screenshot (opsional). Yang lama tetap ada." : "Screenshot WhatsApp · ±100 KB, teks tetap tajam"} />}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Batal</Button>
           <Button onClick={submit} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Simpan</Button>

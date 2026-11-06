@@ -233,7 +233,7 @@ export default function ArchiveStyle() {
           </Card>
 
           <Card className="space-y-2 p-4">
-            <div className="flex items-center justify-between"><h2 className="font-semibold">Percakapan terkait</h2>
+            <div className="flex items-center justify-between"><h2 className="font-semibold">Percakapan & catatan</h2>
               <Button size="sm" variant="outline" onClick={() => setDlg("note")}><Plus className="h-4 w-4" /> Simpan</Button></div>
             {data.notes.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada.</p> : (
               <ul className="divide-y text-sm">
@@ -241,6 +241,16 @@ export default function ArchiveStyle() {
                   <li key={n.id} className="space-y-1 py-2">
                     <p><span className="text-muted-foreground">{fmtDate(n.note_date)} · </span>{n.title}
                       {n.status === "open" && <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-900">aktif</span>}</p>
+                    {(n.body || n.summary) && <p className="line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground">{n.body || n.summary}</p>}
+                    {n.links?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {n.links.map((l, i) => (
+                          <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" title={l.url}
+                            className="max-w-full truncate rounded-full border px-2 py-0.5 text-xs text-primary hover:bg-muted">
+                            {l.label || (() => { try { return new URL(l.url).hostname.replace(/^www\./, ""); } catch { return l.url; } })()} ↗</a>
+                        ))}
+                      </div>
+                    )}
                     <MediaGrid media={n.media} size="sm" />
                   </li>
                 ))}
@@ -265,7 +275,7 @@ export default function ArchiveStyle() {
       <DocDialog open={dlg === "sheet"} onOpenChange={(v) => !v && setDlg(null)} customerId={cust.id} styleId={s.id} section="spec_sheet" title={`Spec sheet · ${s.name}`} onSaved={load} />
       <DocDialog open={dlg === "file"} onOpenChange={(v) => !v && setDlg(null)} customerId={cust.id} styleId={s.id} section="file" title={`File lain · ${s.name}`} onSaved={load} />
       <ProgramDialog open={dlg === "program"} onOpenChange={(v) => !v && setDlg(null)} style={s} customerName={cust.customer_name} suggestions={data.program_suggestions} onSaved={load} />
-      <NoteDialog open={dlg === "note"} onOpenChange={(v) => !v && setDlg(null)} customerId={cust.id} styles={[{ id: s.id, name: s.name }]} defaultStyleId={s.id} onSaved={load} />
+      <NoteDialog mode="catatan" open={dlg === "note"} onOpenChange={(v) => !v && setDlg(null)} customerId={cust.id} styles={[{ id: s.id, name: s.name }]} defaultStyleId={s.id} onSaved={load} />
     </>
   );
 }
