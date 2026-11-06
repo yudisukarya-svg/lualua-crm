@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Image as ImageIcon, Loader2, Plus, Copy, Check, History, ExternalLink, Pencil, StickyNote } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon, Loader2, Plus, Copy, Check, History, ExternalLink, Pencil, StickyNote, Search, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import MediaGrid, { useThumbUrls } from "@/components/archive/MediaGrid";
 import { LabelDialog, NoteDialog, PoDialog, StyleDialog } from "@/components/archive/Dialogs";
@@ -63,7 +64,16 @@ export default function ArchiveCustomer() {
 }
 
 function StylesTab({ styles, customerId, onSaved, newStyles }) {
-  const thumbs = useThumbUrls(styles.map((s) => ({ thumb: s.cover_thumb })));
+  const [q, setQ] = useState("");
+  const shown = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return styles;
+    return styles.filter((s) => {
+      const hay = [s.name, s.knitting_gauge, s.knitting_method === "machine" ? "mesin" : s.knitting_method === "manual" ? "manual" : ""].join(" ").toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [styles, q]);
+  const thumbs = useThumbUrls(shown.map((s) => ({ thumb: s.cover_thumb })));
   const [open, setOpen] = useState(false);
   const dialog = <StyleDialog open={open} onOpenChange={setOpen} customerId={customerId} onSaved={onSaved} />;
   if (!styles.length) return (<>
@@ -71,10 +81,21 @@ function StylesTab({ styles, customerId, onSaved, newStyles }) {
       action={<Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Style baru</Button>} />{dialog}</>);
   return (
     <>
-    <div className="mb-4 flex justify-end"><Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Style baru</Button></div>
+    <div className="sticky top-0 z-10 -mx-1 mb-4 flex flex-col gap-2 bg-background/95 px-1 py-2 backdrop-blur sm:flex-row sm:items-center">
+      <div className="relative flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input className="pl-9 pr-9" aria-label="Cari style" placeholder={`Cari di ${styles.length} style… (nama, gauge, mesin/manual)`}
+          value={q} onChange={(e) => setQ(e.target.value)} autoFocus={styles.length > 12} />
+        {q && <button type="button" aria-label="Hapus pencarian" onClick={() => setQ("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>}
+      </div>
+      {q && <span className="text-sm text-muted-foreground">{shown.length} dari {styles.length}</span>}
+      <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Style baru</Button>
+    </div>
     {dialog}
+    {shown.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada style yang cocok dengan "{q}".</p>}
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {styles.map((s) => (
+      {shown.map((s) => (
         <Link key={s.id} to={`/archive/style/${s.id}`} className="overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md">
           <div className="flex h-40 items-center justify-center bg-muted">
             {s.cover_thumb && thumbs[s.cover_thumb]
