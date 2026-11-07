@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
+// Supabase returns max 1000 rows per request. There are more styles than that,
+// so always load them page by page (otherwise some styles silently go missing).
+export async function fetchAllStyles(select = "*") {
+  const PAGE = 1000, all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase.from("production_styles").select(select)
+      .order("name").order("id").range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    all.push(...(data ?? []));
+    if (!data || data.length < PAGE) return { data: all, error: null };
+  }
+}
+
 export function useStyles() {
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStyles = useCallback(async () => {
     setLoading(true);
-    // Supabase returns max 1000 rows per request; load in pages so all styles show up
-    const PAGE = 1000, all = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from("production_styles").select("*, customers(customer_name)")
-        .order("name").order("id").range(from, from + PAGE - 1);
-      if (error) break;
-      all.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
-    setStyles(all);
+    const { data } = await fetchAllStyles("*, customers(customer_name)");
+    setStyles(data);
     setLoading(false);
   }, []);
 

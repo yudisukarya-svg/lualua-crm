@@ -7,6 +7,7 @@ import { sumStageActualsBySo, buildStageCredit } from "@/lib/stageCredit";
 import { simulateQuote } from "@/lib/quoteSim";
 import { realPcsPerDay, calibrateResources, applyUniformRates, windowStart } from "@/lib/realCapacity";
 import { resourcesToMap } from "@/hooks/useResources";
+import { fetchAllStyles } from "@/hooks/useStyles";
 import { todayLocalStr } from "@/lib/utils";
 
 const RATE_FIELDS = ["knitting_manual", "knitting_machine", "linking", "finishing", "steam", "label", "qc", "packing"];
@@ -64,7 +65,7 @@ export function useSchedule() {
     setLoading(true);
     const [resR, styR, setR, holR, soR, macR, blkR, mresR] = await Promise.all([
       supabase.from("production_resources").select("*"),
-      supabase.from("production_styles").select("*"),
+      fetchAllStyles("*"),
       supabase.from("planning_settings").select("*").eq("id", 1).single(),
       supabase.from("planning_holidays").select("*"),
       supabase.from("sales_orders").select("*, customers(customer_name), sales_order_lines(*, production_styles(name))").order("sequence"),
