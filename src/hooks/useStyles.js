@@ -7,8 +7,16 @@ export function useStyles() {
 
   const fetchStyles = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("production_styles").select("*, customers(customer_name)").order("name");
-    setStyles(data ?? []);
+    // Supabase returns max 1000 rows per request; load in pages so all styles show up
+    const PAGE = 1000, all = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase.from("production_styles").select("*, customers(customer_name)")
+        .order("name").order("id").range(from, from + PAGE - 1);
+      if (error) break;
+      all.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
+    setStyles(all);
     setLoading(false);
   }, []);
 
