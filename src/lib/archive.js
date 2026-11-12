@@ -295,3 +295,45 @@ export function fmtDate(v) {
   return new Date(y, m - 1, d).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 export const markCustomerRead = (id) => rpc("archive_mark_read", { p_customer: id });
+
+// ---------- delete (entri riwayat, catatan/percakapan, PO customer) ----------
+// Deletes the record AND its photos/files (archive_media rows + storage objects).
+// Works whatever the archive_media foreign key does (cascade / set null / restrict).
+// Throws a clear message if the database silently refused (RLS = 0 rows deleted).
+const DELETE_TARGETS = {
+  style_entries: "entry_id",
+  customer_notes: "note_id",
+  customer_pos: "po_id",
+};
+export async function deleteArchiveRecord(table, id) {
+  const fk = DELETE_TARGETS[table];
+  if (!fk) throw new Error(`Tabel ${table} tidak bisa dihapus dari sini.`);
+
+  // 1. remember which files belong to this record
+  const { data: media, error: e0 } = await supabase.from("archive_media")
+    .select("id, storage_path, thumb_path").eq(fk, id);
+  if (e0) throw e0;
+  const mediaIds = (media ?? []).map((m) => m.id);
+
+  // 2. delete the record itself (if a foreign key blocks it, remove the files' rows first)
+  const del = () => supabase.from(table).delete().eq("id", id).select("id");
+  let { data: gone, error } = await del();
+  if (error?.code === "23503" && mediaIds.length) {
+    const { error: em } = await supabase.from("archive_media").delete().in("id", mediaIds);
+    if (em) throw em;
+    ({ data: gone, error } = await del());
+  }
+  if (error) throw error;
+  if (!gone?.length) throw new Error("Tidak terhapus — akun ini belum punya izin hapus di database. Kabari admin.");
+
+  // 3. remove leftover file rows + the files in storage (frees space)
+  if (mediaIds.length) {
+    await supabase.from("archive_media").delete().in("id", mediaIds);
+    const paths = media.flatMap((m) => [m.storage_path, m.thumb_path]).filter(Boolean);
+    if (paths.length) {
+      const { error: es } = await supabase.storage.from(ARCHIVE_BUCKET).remove(paths);
+      if (es) console.warn("[archive] file storage tidak terhapus:", es.message);
+    }
+  }
+  return { files: mediaIds.length };
+}

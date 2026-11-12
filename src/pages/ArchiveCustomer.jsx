@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import MediaGrid, { useThumbUrls } from "@/components/archive/MediaGrid";
 import { LabelDialog, NoteDialog, PoDialog, StyleDialog } from "@/components/archive/Dialogs";
+import DeleteButton from "@/components/archive/DeleteButton";
 import { fetchCustomerPage, markCustomerRead, fmtDate, LABEL_ITEMS, NOTE_TOPICS, PO_STATUS, labelOf } from "@/lib/archive";
 import { cn } from "@/lib/utils";
 
@@ -245,7 +246,7 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-2 pr-3 font-medium">Tanggal PO</th><th className="py-2 pr-3 font-medium">No. PO customer</th>
-                <th className="py-2 pr-3 font-medium">SO Lualua</th><th className="py-2 pr-3 font-medium">File</th><th className="py-2 font-medium">Status</th>
+                <th className="py-2 pr-3 font-medium">SO Lualua</th><th className="py-2 pr-3 font-medium">File</th><th className="py-2 pr-3 font-medium">Status</th><th className="py-2"><span className="sr-only">Hapus</span></th>
               </tr></thead>
               <tbody>
                 {pos.map((p) => (
@@ -254,11 +255,15 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
                     <td className="py-2 pr-3 font-medium">{p.po_number || "—"}{p.notes && <p className="text-xs font-normal text-muted-foreground">{p.notes}</p>}</td>
                     <td className="py-2 pr-3">{p.so_number || "—"}</td>
                     <td className="py-2 pr-3"><MediaGrid media={p.media} size="sm" /></td>
-                    <td className="py-2">
+                    <td className="py-2 pr-3">
                       <select aria-label="Status PO" value={p.status} onChange={(e) => setStatus("customer_pos", p.id, e.target.value)}
                         className="h-8 rounded-md border border-input bg-background px-2 text-sm">
                         {PO_STATUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
+                    </td>
+                    <td className="py-2 text-right">
+                      <DeleteButton table="customer_pos" id={p.id} what="PO ini" iconOnly
+                        detail={`PO ${p.po_number || "tanpa nomor"} · ${fmtDate(p.po_date)}`} fileCount={p.media?.length ?? 0} onDeleted={onSaved} />
                     </td>
                   </tr>
                 ))}
@@ -314,6 +319,8 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
                   <Button size="sm" variant="outline" onClick={() => setStatus("customer_notes", n.id, n.status === "open" ? "done" : "open")}>
                     {n.status === "open" ? "Tandai selesai" : "Buka lagi"}</Button>
                   <Button size="sm" variant="ghost" onClick={() => setNoteDlg({ note: n })}><Pencil className="h-4 w-4" /> Edit</Button>
+                  <DeleteButton table="customer_notes" id={n.id} what={n.kind === "catatan" ? "catatan ini" : "percakapan ini"}
+                    detail={`${fmtDate(n.note_date)} · ${n.title || ""}`} fileCount={n.media?.length ?? 0} onDeleted={onSaved} />
                 </div>
               </div>
             </Card>

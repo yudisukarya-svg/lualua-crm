@@ -7,6 +7,7 @@ import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import MediaGrid, { openMedia } from "@/components/archive/MediaGrid";
+import DeleteButton from "@/components/archive/DeleteButton";
 import { EntryDialog, SpecDialog, DocDialog, ProgramDialog, NoteDialog } from "@/components/archive/Dialogs";
 import {
   fetchStylePage, fmtDate, formatBytes, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, stageList, programUrl,
@@ -106,6 +107,8 @@ export default function ArchiveStyle() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {e.by && <span>diinput {e.by}</span>}
                       <Button size="sm" variant="ghost" aria-label="Ubah entri" onClick={() => setDlg({ entry: e })}><Pencil className="h-4 w-4" /></Button>
+                      <DeleteButton table="style_entries" id={e.id} what="entri ini" iconOnly
+                        detail={`${fmtDate(e.entry_date)} · ${labelOf(ENTRY_KINDS, e.kind)}`} fileCount={e.media?.length ?? 0} onDeleted={load} />
                     </div>
                   </div>
                   <MediaGrid media={e.media} size="md" empty={<p className="text-sm text-muted-foreground">Belum ada foto untuk entri ini.</p>} />
