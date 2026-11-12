@@ -190,9 +190,9 @@ export async function uploadArchiveFile(file, meta, onStep) {
 
   let version = 1;
   if (meta.section === "spec_sheet" && meta.styleId) {
-    const { count } = await supabase.from("archive_media").select("id", { count: "exact", head: true })
-      .eq("style_id", meta.styleId).eq("section", "spec_sheet");
-    version = (count ?? 0) + 1;
+    const { data: top } = await supabase.from("archive_media").select("version")
+      .eq("style_id", meta.styleId).eq("section", "spec_sheet").order("version", { ascending: false }).limit(1);
+    version = (top?.[0]?.version ?? 0) + 1;
   }
   const baseName = file.name.replace(/\.(heic|heif|jpe?g|png|gif|bmp|webp)$/i, "");
   const row = {
@@ -306,6 +306,7 @@ const DELETE_TARGETS = {
   customer_pos: "po_id",
 };
 export async function deleteArchiveRecord(table, id) {
+  if (table === "archive_media") return deleteArchiveMedia(id);
   const fk = DELETE_TARGETS[table];
   if (!fk) throw new Error(`Tabel ${table} tidak bisa dihapus dari sini.`);
 
@@ -336,4 +337,18 @@ export async function deleteArchiveRecord(table, id) {
     }
   }
   return { files: mediaIds.length };
+}
+
+// Delete ONE file (spec sheet version, file lain, …): its row + the file in storage.
+export async function deleteArchiveMedia(id) {
+  const { data: gone, error } = await supabase.from("archive_media").delete().eq("id", id)
+    .select("storage_path, thumb_path");
+  if (error) throw error;
+  if (!gone?.length) throw new Error("Tidak terhapus — akun ini belum punya izin hapus di database. Kabari admin.");
+  const paths = gone.flatMap((m) => [m.storage_path, m.thumb_path]).filter(Boolean);
+  if (paths.length) {
+    const { error: es } = await supabase.storage.from(ARCHIVE_BUCKET).remove(paths);
+    if (es) console.warn("[archive] file storage tidak terhapus:", es.message);
+  }
+  return { files: 1 };
 }

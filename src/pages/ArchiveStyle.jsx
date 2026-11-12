@@ -215,7 +215,10 @@ export default function ArchiveStyle() {
                 {data.spec_sheets.map((m, i) => (
                   <li key={m.id} className="flex items-center justify-between gap-2 py-2">
                     <button className="min-w-0 truncate text-left hover:underline" onClick={() => openMedia(m)}><b>v{m.version}</b> · {m.name}</button>
-                    <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-xs", i === 0 ? "bg-green-100 text-green-900" : "text-muted-foreground")}>{i === 0 ? "Terbaru · " : ""}{fmtDate(m.date)}</span>
+                    <span className="flex items-center gap-1">
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-xs", i === 0 ? "bg-green-100 text-green-900" : "text-muted-foreground")}>{i === 0 ? "Terbaru · " : ""}{fmtDate(m.date)}</span>
+                      <DeleteButton table="archive_media" id={m.id} what="spec sheet ini" iconOnly detail={`v${m.version} · ${m.name}`} onDeleted={load} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -243,7 +246,9 @@ export default function ArchiveStyle() {
                 {data.notes.map((n) => (
                   <li key={n.id} className="space-y-1 py-2">
                     <p><span className="text-muted-foreground">{fmtDate(n.note_date)} · </span>{n.title}
-                      {n.status === "open" && <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-900">aktif</span>}</p>
+                      {n.status === "open" && <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-900">aktif</span>}
+                      <span className="float-right"><DeleteButton table="customer_notes" id={n.id} what="catatan ini" iconOnly
+                        detail={`${fmtDate(n.note_date)} · ${n.title || ""}`} fileCount={n.media?.length ?? 0} onDeleted={load} /></span></p>
                     {(n.body || n.summary) && <p className="line-clamp-3 whitespace-pre-wrap break-words text-muted-foreground">{n.body || n.summary}</p>}
                     {n.links?.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
@@ -268,7 +273,17 @@ export default function ArchiveStyle() {
             {data.sos.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada SO dengan nama item ini.</p> : (
               <ul className="space-y-1 text-sm">{data.sos.map((o) => <li key={o.so_number}>{o.so_number} · {o.status} · {fmtDate(o.so_date)}</li>)}</ul>
             )}
-            {data.files.length > 0 && <MediaGrid media={data.files} size="sm" />}
+            {data.files.length > 0 && (
+              <ul className="divide-y border-t text-sm">
+                {data.files.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-2 py-1.5">
+                    <button className="min-w-0 truncate text-left hover:underline" onClick={() => openMedia(f)}>{f.name}</button>
+                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">{fmtDate(f.date)}
+                      <DeleteButton table="archive_media" id={f.id} what="file ini" iconOnly detail={f.name} onDeleted={load} /></span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </aside>
       </div>
