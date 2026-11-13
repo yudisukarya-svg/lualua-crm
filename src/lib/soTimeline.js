@@ -38,10 +38,30 @@ export async function fetchSoTimeline(so) {
   return { ...a.data, events: (a.data.events ?? []).filter((e) => e.kind !== "prod"), production: b.data ?? [] };
 }
 
-export async function searchSo(q) {
-  const { data, error } = await supabase.rpc("so_timeline_search", { p_q: q || "" });
+export const PAGE_SIZE = 100;
+// Zoho SO status → label shown in the app
+export const SO_STATUS = [
+  { value: "open", label: "Open", hint: "sudah dikonfirmasi, belum di-invoice" },
+  { value: "overdue", label: "Overdue", hint: "lewat tanggal kirim di Zoho" },
+  { value: "partially_invoiced", label: "Sebagian di-invoice", hint: "baru sebagian yang di-invoice" },
+  { value: "invoiced", label: "Sudah di-invoice", hint: "sudah dibuatkan invoice" },
+  { value: "draft", label: "Draft", hint: "belum dikonfirmasi di Zoho" },
+];
+export const soStatusLabel = (v) => SO_STATUS.find((x) => x.value === v)?.label ?? v;
+
+// returns { rows, total }
+export async function searchSo(q, status = "", page = 0) {
+  const { data, error } = await supabase.rpc("so_timeline_search_v2", {
+    p_q: q || "", p_status: status || "", p_offset: page * PAGE_SIZE, p_limit: PAGE_SIZE,
+  });
   if (error) throw error;
-  return data ?? [];
+  return { rows: data ?? [], total: Number(data?.[0]?.total_count ?? 0) };
+}
+
+export async function soStatusCounts(q) {
+  const { data, error } = await supabase.rpc("so_timeline_status_counts", { p_q: q || "" });
+  if (error) throw error;
+  return Object.fromEntries((data ?? []).map((r) => [r.status, Number(r.n)]));
 }
 
 // rows: [{ stage, date, style, pcs }] → waves sorted by start date
