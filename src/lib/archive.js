@@ -161,6 +161,49 @@ export async function compressFile(file, section) {
   return { main: file, thumb: null, mime: file.type || "application/octet-stream", ext, originalSize: file.size };
 }
 
+// ---------- duplicate → link the file that is already stored (no new upload, no extra storage) ----------
+// sha256 is unique per customer in the database, so the linked row gets "<hash>#<random>" —
+// the duplicate check (exact hash) keeps finding the original row.
+async function linkExisting(dup, meta, size) {
+  const target = {
+    customer_id: meta.customerId,
+    style_id: meta.styleId ?? null,
+    entry_id: meta.entryId ?? null,
+    label_id: meta.labelId ?? null,
+    note_id: meta.noteId ?? null,
+    po_id: meta.poId ?? null,
+    section: meta.section,
+  };
+  // already in exactly this place? → nothing to do
+  let q = supabase.from("archive_media").select("id").eq("storage_path", dup.storage_path).eq("section", target.section);
+  for (const k of ["style_id", "entry_id", "label_id", "note_id", "po_id"]) q = target[k] ? q.eq(k, target[k]) : q.is(k, null);
+  const { data: here } = await q.limit(1);
+  if (here?.length) return { status: "duplicate", before: size, after: 0 };
+
+  const row = {
+    ...target,
+    category: meta.category ?? null,
+    media_date: meta.mediaDate,
+    file_name: dup.file_name,
+    storage_path: dup.storage_path,
+    thumb_path: dup.thumb_path,
+    mime_type: dup.mime_type,
+    size_bytes: dup.size_bytes,
+    original_size_bytes: dup.original_size_bytes,
+    sha256: `${dup.sha256}#${crypto.randomUUID().slice(0, 8)}`,
+    version: 1,
+    caption: meta.caption ?? null,
+  };
+  if (meta.section === "spec_sheet" && meta.styleId) {
+    const { data: top } = await supabase.from("archive_media").select("version")
+      .eq("style_id", meta.styleId).eq("section", "spec_sheet").order("version", { ascending: false }).limit(1);
+    row.version = (top?.[0]?.version ?? 0) + 1;
+  }
+  const { data, error } = await supabase.from("archive_media").insert(row).select().single();
+  if (error) throw error;
+  return { status: "linked", row: data, before: size, after: 0 };
+}
+
 // ---------- upload ----------
 // meta: { customerId, styleId, entryId, labelId, noteId, poId, section, category, mediaDate, caption }
 // Returns { status: "uploaded"|"duplicate", row, before, after }
@@ -168,8 +211,8 @@ export async function uploadArchiveFile(file, meta, onStep) {
   onStep?.("Mengecek file kembar…");
   const hash = await sha256(file);
   const { data: dup } = await supabase.from("archive_media")
-    .select("id").eq("customer_id", meta.customerId).eq("sha256", hash).maybeSingle();
-  if (dup) return { status: "duplicate", before: file.size, after: 0 };
+    .select("*").eq("customer_id", meta.customerId).eq("sha256", hash).maybeSingle();
+  if (dup) return linkExisting(dup, meta, file.size);
 
   onStep?.("Memperkecil…");
   const c = await compressFile(file, meta.section);
@@ -331,13 +374,23 @@ export async function deleteArchiveRecord(table, id) {
   // 3. remove leftover file rows + the files in storage (frees space)
   if (mediaIds.length) {
     await supabase.from("archive_media").delete().in("id", mediaIds);
-    const paths = media.flatMap((m) => [m.storage_path, m.thumb_path]).filter(Boolean);
-    if (paths.length) {
-      const { error: es } = await supabase.storage.from(ARCHIVE_BUCKET).remove(paths);
-      if (es) console.warn("[archive] file storage tidak terhapus:", es.message);
-    }
+    await removeUnusedFiles(media);
   }
   return { files: mediaIds.length };
+}
+
+// Remove files from storage, but ONLY those no other archive row still points to
+// (the same photo can be linked in several places without being uploaded twice).
+async function removeUnusedFiles(rows) {
+  const main = [...new Set(rows.map((m) => m.storage_path).filter(Boolean))];
+  if (!main.length) return;
+  const { data: still } = await supabase.from("archive_media").select("storage_path").in("storage_path", main);
+  const used = new Set((still ?? []).map((r) => r.storage_path));
+  const paths = rows.filter((m) => m.storage_path && !used.has(m.storage_path))
+    .flatMap((m) => [m.storage_path, m.thumb_path]).filter(Boolean);
+  if (!paths.length) return;
+  const { error } = await supabase.storage.from(ARCHIVE_BUCKET).remove([...new Set(paths)]);
+  if (error) console.warn("[archive] file storage tidak terhapus:", error.message);
 }
 
 // Delete ONE file (spec sheet version, file lain, …): its row + the file in storage.
@@ -346,11 +399,7 @@ export async function deleteArchiveMedia(id) {
     .select("storage_path, thumb_path");
   if (error) throw error;
   if (!gone?.length) throw new Error("Tidak terhapus — akun ini belum punya izin hapus di database. Kabari admin.");
-  const paths = gone.flatMap((m) => [m.storage_path, m.thumb_path]).filter(Boolean);
-  if (paths.length) {
-    const { error: es } = await supabase.storage.from(ARCHIVE_BUCKET).remove(paths);
-    if (es) console.warn("[archive] file storage tidak terhapus:", es.message);
-  }
+  await removeUnusedFiles(gone);
   return { files: 1 };
 }
 

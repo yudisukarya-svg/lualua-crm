@@ -17,15 +17,16 @@ export function useBatchUpload() {
 
   // metaFor(file, index, item) → meta for uploadArchiveFile (item.cat = jenis foto chosen per file)
   const run = useCallback(async (metaFor) => {
-    const out = { uploaded: 0, duplicate: 0, failed: 0, before: 0, after: 0 };
+    const out = { uploaded: 0, duplicate: 0, linked: 0, failed: 0, before: 0, after: 0 };
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      if (it.status === "done" || it.status === "duplicate") continue;
+      if (it.status === "done" || it.status === "duplicate" || it.status === "linked") continue;
       const setOne = (patch) => setItems((prev) => prev.map((x, j) => (j === i ? { ...x, ...patch } : x)));
       setOne({ status: "busy" });
       try {
         const r = await uploadArchiveFile(it.file, metaFor(it.file, i, it), (step) => setOne({ step }));
         if (r.status === "duplicate") { out.duplicate++; setOne({ status: "duplicate" }); }
+        else if (r.status === "linked") { out.linked++; setOne({ status: "linked" }); }
         else { out.uploaded++; out.before += r.before; out.after += r.after; setOne({ status: "done", after: r.after }); }
       } catch (e) {
         out.failed++; setOne({ status: "error", error: e.message });
@@ -74,7 +75,8 @@ export default function FilesField({ uploader, accept = "image/*,.heic,.heif,app
               </span>
               {it.status === "busy" && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />{it.step}</span>}
               {it.status === "done" && <CheckCircle2 className="h-4 w-4 text-green-700" aria-label="Tersimpan" />}
-              {it.status === "duplicate" && <span className="flex items-center gap-1 text-xs text-amber-800"><Copy className="h-3.5 w-3.5" />Kembar, dilewati</span>}
+              {it.status === "duplicate" && <span className="flex items-center gap-1 text-xs text-amber-800"><Copy className="h-3.5 w-3.5" />Sudah ada di sini</span>}
+              {it.status === "linked" && <span className="flex items-center gap-1 text-xs text-green-800"><Copy className="h-3.5 w-3.5" />Sudah pernah di-upload · ditautkan</span>}
               {it.status === "error" && <span className="flex items-center gap-1 text-xs text-destructive" title={it.error}><AlertTriangle className="h-3.5 w-3.5" />{it.error}</span>}
               {it.status === "waiting" && !busy && (
                 <button type="button" onClick={() => remove(i)} aria-label={`Hapus ${it.file.name}`} className="rounded p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
@@ -90,7 +92,8 @@ export default function FilesField({ uploader, accept = "image/*,.heic,.heif,app
 export function summaryText(r) {
   const parts = [];
   if (r.uploaded) parts.push(`${r.uploaded} file disimpan (${formatBytes(r.before)} → ${formatBytes(r.after)})`);
-  if (r.duplicate) parts.push(`${r.duplicate} kembar dilewati`);
+  if (r.linked) parts.push(`${r.linked} foto sudah ada — ditautkan, tidak di-upload ulang`);
+  if (r.duplicate) parts.push(`${r.duplicate} sudah ada di tempat ini`);
   if (r.failed) parts.push(`${r.failed} gagal`);
   return parts.join(" · ") || "Tidak ada file baru";
 }
