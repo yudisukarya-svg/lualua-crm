@@ -28,6 +28,7 @@ import Archive from "@/pages/Archive";
 import ArchiveCustomer from "@/pages/ArchiveCustomer";
 import ArchiveStyle from "@/pages/ArchiveStyle";
 import ArchiveStylePrint from "@/pages/ArchiveStylePrint";
+import SoTimeline from "@/pages/SoTimeline";
 
 export default function App() {
   return (
@@ -46,6 +47,8 @@ export default function App() {
             <Route path="/archive" element={<Archive />} />
             <Route path="/archive/customer/:id" element={<ArchiveCustomer />} />
             <Route path="/archive/style/:id" element={<ArchiveStyle />} />
+            <Route path="/timeline" element={<SoTimeline />} />
+            <Route path="/timeline/:so" element={<SoTimeline />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/reports" element={<Reports />} />

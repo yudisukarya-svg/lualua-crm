@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, ClipboardList, AlertTriangle, TrendingUp, Wand2, Activity, Printer, Truck, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Pencil, Trash2, ClipboardList, AlertTriangle, TrendingUp, Wand2, Activity, Printer, Truck, Archive, ArchiveRestore, History } from "lucide-react";
 import { useSchedule } from "@/hooks/useSchedule";
 import { deleteSalesOrder, archiveSalesOrder, unarchiveSalesOrder, READINESS_ITEMS } from "@/hooks/useSalesOrders";
 import { useShipments } from "@/hooks/useShipments";
@@ -241,6 +241,9 @@ export default function Planning() {
                               : <Badge className="bg-emerald-100 text-emerald-700">On time</Badge>}
                         </TableCell>
                         <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Timeline SO" asChild>
+                            <Link to={`/timeline/${encodeURIComponent(r.so_number)}`} aria-label={`Timeline ${r.so_number}`}><History className="h-4 w-4" /></Link>
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Print plan sheet" onClick={() => printOrderPlan(r.id, schedule, raw)}>
                             <Printer className="h-4 w-4" />
                           </Button>
