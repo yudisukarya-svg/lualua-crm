@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Users, Scissors, Factory, PackageCheck, CheckCircle2, Clock, FileText, StickyNote, AlertTriangle, CalendarClock, Layers, ClipboardList, PauseCircle, ThumbsUp, Radio } from "lucide-react";
+import { Users, Scissors, Factory, PackageCheck, CheckCircle2, Clock, FileText, StickyNote, AlertTriangle, CalendarClock, Layers, ClipboardList, PauseCircle, ThumbsUp, Radio, BellRing } from "lucide-react";
+import { fetchAttention, TEAMS } from "@/lib/attention";
 import { supabase } from "@/lib/supabase";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useActivities } from "@/hooks/useActivities";
@@ -73,6 +74,8 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Production at a glance" />
+
+      <AttentionSummary />
 
       {/* Needs follow-up today */}
       <Card className="mt-2 border-amber-200">
@@ -264,5 +267,20 @@ export default function Dashboard() {
         </Card>
       </div>
     </>
+  );
+}
+
+// Short summary of the "Perlu Perhatian" page (counts per team) with a link to it.
+function AttentionSummary() {
+  const [rows, setRows] = useState(null);
+  useEffect(() => { fetchAttention().then(setRows).catch(() => setRows([])); }, []);
+  if (!rows) return null;
+  const n = (t) => rows.filter((r) => r.team === t).length;
+  return (
+    <Link to="/perhatian" className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm hover:bg-amber-50">
+      <span className="flex items-center gap-1.5 font-semibold text-amber-900"><BellRing className="h-4 w-4" /> Perlu Perhatian ({rows.length})</span>
+      {TEAMS.map((t) => <span key={t.value} className="text-amber-900">{t.label} <b>{n(t.value)}</b></span>)}
+      <span className="ml-auto text-primary">Buka daftar →</span>
+    </Link>
   );
 }
