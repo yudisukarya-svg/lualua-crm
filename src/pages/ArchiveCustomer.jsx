@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import MediaGrid, { useThumbUrls } from "@/components/archive/MediaGrid";
-import { LabelDialog, NoteDialog, PoDialog, StyleDialog } from "@/components/archive/Dialogs";
+import { LabelDialog, LabelPhotosDialog, NoteDialog, PoDialog, StyleDialog } from "@/components/archive/Dialogs";
 import DeleteButton from "@/components/archive/DeleteButton";
-import { fetchCustomerPage, markCustomerRead, fmtDate, LABEL_ITEMS, NOTE_TOPICS, PO_STATUS, labelOf } from "@/lib/archive";
+import { fetchCustomerPage, markCustomerRead, fmtDate, formatBytes, LABEL_ITEMS, NOTE_TOPICS, PO_STATUS, labelOf } from "@/lib/archive";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -121,7 +121,7 @@ function StylesTab({ styles, customerId, onSaved, newStyles }) {
   );
 }
 
-function LabelCard({ row, def, onEdit }) {
+function LabelCard({ row, def, onEdit, onAddPhotos, onSaved }) {
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
@@ -129,9 +129,14 @@ function LabelCard({ row, def, onEdit }) {
           <h3 className="font-semibold">{def.label}</h3>
           <p className="text-xs text-muted-foreground">{row ? `berlaku sejak ${fmtDate(row.effective_date)}` : "belum diisi"}</p>
         </div>
-        <Button size="sm" variant="outline" onClick={onEdit}>{row ? "Perbarui" : "Isi"}</Button>
+        <div className="flex flex-wrap justify-end gap-1">
+          {row && <Button size="sm" variant="outline" onClick={onAddPhotos}><Plus className="h-4 w-4" /> Tambah foto</Button>}
+          <Button size="sm" variant="outline" onClick={onEdit}>{row ? "Perbarui" : "Isi"}</Button>
+          {row && <DeleteButton table="label_packing" id={row.id} what="versi ini" iconOnly fileCount={row.media?.length ?? 0} onDeleted={onSaved}
+            detail={`${def.label} · berlaku sejak ${fmtDate(row.effective_date)}. Versi sebelumnya (kalau ada) akan berlaku lagi.`} />}
+        </div>
       </div>
-      {row && <MediaGrid media={row.media} size="md" />}
+      {row && <MediaGrid media={row.media} size="md" onDeleted={onSaved} />}
       {row && (
         <dl className="divide-y text-sm">
           {def.fields.map((k) => (
@@ -148,6 +153,7 @@ function LabelCard({ row, def, onEdit }) {
 
 function LabelTab({ customerId, rows, styles, onSaved }) {
   const [dlg, setDlg] = useState(null);
+  const [photoDlg, setPhotoDlg] = useState(null); // { row, def }
   const [history, setHistory] = useState(false);
   const standard = useMemo(() => {
     const m = {};
@@ -170,7 +176,9 @@ function LabelTab({ customerId, rows, styles, onSaved }) {
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        {LABEL_ITEMS.map((def) => <LabelCard key={def.value} def={def} row={standard[def.value]} onEdit={() => setDlg({ item: def.value, details: standard[def.value]?.details, notes: standard[def.value]?.notes })} />)}
+        {LABEL_ITEMS.map((def) => <LabelCard key={def.value} def={def} row={standard[def.value]} onSaved={onSaved}
+          onAddPhotos={() => setPhotoDlg({ row: standard[def.value], def })}
+          onEdit={() => setDlg({ item: def.value, details: standard[def.value]?.details, notes: standard[def.value]?.notes })} />)}
       </div>
       <Card className="mt-4 border-amber-200 bg-amber-50/60 p-4">
         <h3 className="mb-2 font-semibold">Pengecualian per style</h3>
@@ -180,6 +188,12 @@ function LabelTab({ customerId, rows, styles, onSaved }) {
               <li key={r.id} className="flex flex-wrap items-center gap-2">
                 <Link to={`/archive/style/${r.style_id}`} className="font-medium text-primary hover:underline">{r.style_name}</Link>
                 <span>— {labelOf(LABEL_ITEMS, r.item)}: {Object.values(r.details || {}).filter(Boolean).join(", ") || r.notes || "—"} · sejak {fmtDate(r.effective_date)}</span>
+                <span className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setPhotoDlg({ row: r, def: LABEL_ITEMS.find((d) => d.value === r.item) })}><Plus className="h-4 w-4" /> Foto</Button>
+                  <DeleteButton table="label_packing" id={r.id} what="pengecualian ini" iconOnly fileCount={r.media?.length ?? 0} onDeleted={onSaved}
+                    detail={`${r.style_name} · ${labelOf(LABEL_ITEMS, r.item)} · sejak ${fmtDate(r.effective_date)}`} />
+                </span>
+                {r.media?.length > 0 && <MediaGrid media={r.media} size="sm" className="w-full" onDeleted={onSaved} />}
               </li>
             ))}
           </ul>
@@ -194,13 +208,16 @@ function LabelTab({ customerId, rows, styles, onSaved }) {
                 <span className="w-28 text-muted-foreground">{fmtDate(r.effective_date)}</span>
                 <span className="font-medium">{labelOf(LABEL_ITEMS, r.item)}</span>
                 <span className="text-muted-foreground">{r.style_name ? `(${r.style_name})` : "(standar)"}</span>
-                <span>{Object.entries(r.details || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(" · ")}</span>
+                <span className="flex-1">{Object.entries(r.details || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(" · ")}</span>
+                <DeleteButton table="label_packing" id={r.id} what="versi ini" iconOnly fileCount={r.media?.length ?? 0} onDeleted={onSaved}
+                  detail={`${labelOf(LABEL_ITEMS, r.item)} ${r.style_name ? `(${r.style_name})` : "(standar)"} · ${fmtDate(r.effective_date)}`} />
               </li>
             ))}
           </ul>
         </Card>
       )}
       <LabelDialog open={!!dlg} onOpenChange={(v) => !v && setDlg(null)} customerId={customerId} styles={styles} initial={dlg} onSaved={onSaved} />
+      <LabelPhotosDialog open={!!photoDlg} onOpenChange={(v) => !v && setPhotoDlg(null)} customerId={customerId} row={photoDlg?.row} def={photoDlg?.def} onSaved={onSaved} />
     </>
   );
 }
@@ -254,7 +271,8 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
                     <td className="py-2 pr-3">{fmtDate(p.po_date)}</td>
                     <td className="py-2 pr-3 font-medium">{p.po_number || "—"}{p.notes && <p className="text-xs font-normal text-muted-foreground">{p.notes}</p>}</td>
                     <td className="py-2 pr-3">{p.so_number || "—"}</td>
-                    <td className="py-2 pr-3"><MediaGrid media={p.media} size="sm" /></td>
+                    <td className="py-2 pr-3"><MediaGrid media={p.media} size="sm" onDeleted={onSaved} />
+                      {p.media?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{p.media.map((m) => formatBytes(m.size)).join(" · ")}</p>}</td>
                     <td className="py-2 pr-3">
                       <select aria-label="Status PO" value={p.status} onChange={(e) => setStatus("customer_pos", p.id, e.target.value)}
                         className="h-8 rounded-md border border-input bg-background px-2 text-sm">
@@ -288,7 +306,7 @@ function NotesTab({ customer, notes, pos, styles, onSaved }) {
         <div className="space-y-3">
           {list.map((n) => (
             <Card key={n.id} className="flex flex-wrap gap-4 p-4">
-              <MediaGrid media={n.media} size="md" />
+              <MediaGrid media={n.media} size="md" onDeleted={onSaved} />
               <div className="min-w-0 flex-1 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-semibold">{fmtDate(n.note_date)}</span>

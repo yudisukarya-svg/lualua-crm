@@ -12,9 +12,10 @@ export function useBatchUpload() {
     setItems((prev) => [...prev, ...arr.map((file) => ({ file, status: "waiting", before: file.size }))]);
   }, []);
   const remove = (i) => setItems((prev) => prev.filter((_, j) => j !== i));
+  const setCat = (i, cat) => setItems((prev) => prev.map((x, j) => (j === i ? { ...x, cat } : x)));
   const reset = () => setItems([]);
 
-  // metaFor(file, index) → meta for uploadArchiveFile
+  // metaFor(file, index, item) → meta for uploadArchiveFile (item.cat = jenis foto chosen per file)
   const run = useCallback(async (metaFor) => {
     const out = { uploaded: 0, duplicate: 0, failed: 0, before: 0, after: 0 };
     for (let i = 0; i < items.length; i++) {
@@ -23,7 +24,7 @@ export function useBatchUpload() {
       const setOne = (patch) => setItems((prev) => prev.map((x, j) => (j === i ? { ...x, ...patch } : x)));
       setOne({ status: "busy" });
       try {
-        const r = await uploadArchiveFile(it.file, metaFor(it.file, i), (step) => setOne({ step }));
+        const r = await uploadArchiveFile(it.file, metaFor(it.file, i, it), (step) => setOne({ step }));
         if (r.status === "duplicate") { out.duplicate++; setOne({ status: "duplicate" }); }
         else { out.uploaded++; out.before += r.before; out.after += r.after; setOne({ status: "done", after: r.after }); }
       } catch (e) {
@@ -33,13 +34,14 @@ export function useBatchUpload() {
     return out;
   }, [items]);
 
-  return { items, add, remove, reset, run };
+  return { items, add, remove, reset, run, setCat };
 }
 
-export default function FilesField({ uploader, accept = "image/*,.heic,.heif,application/pdf,.xlsx,.xls,.csv,.doc,.docx", hint, compact }) {
+// categories: optional [{value,label}] → each file gets its own "jenis foto" dropdown.
+export default function FilesField({ uploader, accept = "image/*,.heic,.heif,application/pdf,.xlsx,.xls,.csv,.doc,.docx", hint, compact, categories }) {
   const ref = useRef(null);
   const [drag, setDrag] = useState(false);
-  const { items, add, remove } = uploader;
+  const { items, add, remove, setCat } = uploader;
   const busy = items.some((x) => x.status === "busy");
 
   return (
@@ -61,6 +63,12 @@ export default function FilesField({ uploader, accept = "image/*,.heic,.heif,app
           {items.map((it, i) => (
             <li key={i} className="flex items-center gap-2 px-3 py-2">
               <span className="min-w-0 flex-1 truncate">{it.file.name}</span>
+              {categories?.length > 0 && (
+                <select aria-label={`Jenis foto ${it.file.name}`} value={it.cat ?? categories[0].value} disabled={it.status !== "waiting"}
+                  onChange={(e) => setCat(i, e.target.value)} className="h-8 max-w-[45%] rounded-md border border-input bg-background px-2 text-xs">
+                  {categories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              )}
               <span className="whitespace-nowrap text-xs text-muted-foreground">
                 {formatBytes(it.before)}{it.status === "done" ? ` → ${formatBytes(it.after)}` : ""}
               </span>

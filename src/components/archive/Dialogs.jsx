@@ -195,7 +195,7 @@ export function LabelDialog({ open, onOpenChange, customerId, styles = [], initi
       customer_id: customerId, style_id: f.style_id || null, item: f.item, effective_date: f.effective_date, details: f.details, notes: f.notes || null,
     }).select("id").single();
     if (error) throw error;
-    const r = await up.run(() => ({ customerId, styleId: f.style_id || null, labelId: data.id, section: "label_packing", category: f.photoCat, caption: f.photoCat, mediaDate: f.effective_date }));
+    const r = await up.run((_, __, it) => { const cat = it.cat ?? def.photos[0]; return { customerId, styleId: f.style_id || null, labelId: data.id, section: "label_packing", category: cat, caption: cat, mediaDate: f.effective_date }; });
     return `Versi baru berlaku ${fmtDate(f.effective_date)} · ${summaryText(r)}`;
   });
 
@@ -222,11 +222,40 @@ export function LabelDialog({ open, onOpenChange, customerId, styles = [], initi
           ))}
         </div>
         <Field label="Catatan" htmlFor="lp-notes"><Textarea id="lp-notes" rows={2} value={f.notes || ""} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
-        <Field label="Jenis foto" htmlFor="lp-cat"><Sel id="lp-cat" value={f.photoCat || def.photos[0]} onChange={(v) => setF({ ...f, photoCat: v })} options={def.photos.map((p) => ({ value: p, label: p }))} /></Field>
-        <FilesField uploader={up} accept="image/*,.heic,.heif" hint="Close-up dibuat lebih tajam supaya tulisan label & jahitan terbaca (±400 KB)" />
+        <FilesField uploader={up} accept="image/*,.heic,.heif" categories={def.photos.map((p) => ({ value: p, label: p }))}
+          hint="Boleh banyak foto sekaligus · pilih jenis per foto (mis. Terpasang – posisi 1 s/d 4)" />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Batal</Button>
           <Button onClick={submit} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Simpan</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------- Tambah foto ke versi label yang sedang berlaku ----------------
+export function LabelPhotosDialog({ open, onOpenChange, customerId, row, def, onSaved }) {
+  const up = useBatchUpload();
+  const { busy, save } = useSaver(onOpenChange, onSaved);
+  useEffect(() => { if (open) up.reset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const submit = () => save(async () => {
+    if (!up.items.length) throw new Error("Pilih fotonya dulu.");
+    const r = await up.run((_, __, it) => { const cat = it.cat ?? def.photos[0]; return { customerId, styleId: row.style_id || null, labelId: row.id, section: "label_packing", category: cat, caption: cat, mediaDate: todayStr() }; });
+    return summaryText(r);
+  });
+  if (!row || !def) return null;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Tambah foto · {def.label}</DialogTitle>
+          <DialogDescription>Foto ditambahkan ke versi yang berlaku sejak {fmtDate(row.effective_date)} (tidak membuat versi baru).</DialogDescription>
+        </DialogHeader>
+        <FilesField uploader={up} accept="image/*,.heic,.heif" categories={def.photos.map((p) => ({ value: p, label: p }))}
+          hint="Boleh banyak foto sekaligus · pilih jenis per foto (mis. Terpasang – posisi 1 s/d 4)" />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Batal</Button>
+          <Button onClick={submit} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Simpan foto</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

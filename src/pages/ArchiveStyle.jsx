@@ -10,7 +10,7 @@ import MediaGrid, { openMedia } from "@/components/archive/MediaGrid";
 import DeleteButton from "@/components/archive/DeleteButton";
 import { EntryDialog, SpecDialog, DocDialog, ProgramDialog, NoteDialog } from "@/components/archive/Dialogs";
 import {
-  fetchStylePage, fmtDate, formatBytes, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, stageList, programUrl,
+  fetchStylePage, unlinkProgram, fmtDate, formatBytes, costRange, costTotal, labelOf, ENTRY_KINDS, LABEL_ITEMS, stageList, programUrl,
 } from "@/lib/archive";
 import { cn } from "@/lib/utils";
 
@@ -111,7 +111,7 @@ export default function ArchiveStyle() {
                         detail={`${fmtDate(e.entry_date)} · ${labelOf(ENTRY_KINDS, e.kind)}`} fileCount={e.media?.length ?? 0} onDeleted={load} />
                     </div>
                   </div>
-                  <MediaGrid media={e.media} size="md" empty={<p className="text-sm text-muted-foreground">Belum ada foto untuk entri ini.</p>} />
+                  <MediaGrid media={e.media} size="md" onDeleted={load} empty={<p className="text-sm text-muted-foreground">Belum ada foto untuk entri ini.</p>} />
                   <div className="flex flex-wrap gap-3">
                     <div className="min-w-[120px] rounded-md bg-primary/10 px-3 py-2">
                       <p className="text-xs text-muted-foreground">MOQ</p>
@@ -188,7 +188,15 @@ export default function ArchiveStyle() {
                       <span className="font-medium">REV {p.revision || "—"}</span>{p.is_latest && <span className="ml-1 rounded-full bg-green-100 px-1.5 text-xs text-green-900">terbaru</span>}
                       <span className="block truncate text-xs text-muted-foreground">{p.name} · order {p.order_no || "—"} · {fmtDate(p.date)} · {formatBytes(p.size)}</span>
                     </span>
-                    <Button size="sm" variant="outline" asChild><a href={programUrl(p.path)} download><Download className="h-4 w-4" /> Unduh</a></Button>
+                    <span className="flex items-center gap-1">
+                      <Button size="sm" variant="outline" asChild><a href={programUrl(p.path)} download><Download className="h-4 w-4" /> Unduh</a></Button>
+                      <Button size="sm" variant="ghost" className="text-red-700 hover:bg-red-50" title="Lepas tautan program (file program tetap ada di arsip program)"
+                        onClick={async () => {
+                          if (!window.confirm(`Lepas program REV ${p.revision || "—"} dari style ini? File programnya tetap ada di arsip program mesin.`)) return;
+                          try { await unlinkProgram(s.id, p.id); toast({ title: "Program dilepas" }); load(); }
+                          catch (err) { toast({ variant: "destructive", title: "Gagal", description: err.message }); }
+                        }}>Lepas</Button>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -214,7 +222,8 @@ export default function ArchiveStyle() {
               <ul className="divide-y text-sm">
                 {data.spec_sheets.map((m, i) => (
                   <li key={m.id} className="flex items-center justify-between gap-2 py-2">
-                    <button className="min-w-0 truncate text-left hover:underline" onClick={() => openMedia(m)}><b>v{m.version}</b> · {m.name}</button>
+                    <button className="min-w-0 truncate text-left hover:underline" onClick={() => openMedia(m)}><b>v{m.version}</b> · {m.name}
+                      <span className="ml-1 text-xs text-muted-foreground">({formatBytes(m.size)})</span></button>
                     <span className="flex items-center gap-1">
                       <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-xs", i === 0 ? "bg-green-100 text-green-900" : "text-muted-foreground")}>{i === 0 ? "Terbaru · " : ""}{fmtDate(m.date)}</span>
                       <DeleteButton table="archive_media" id={m.id} what="spec sheet ini" iconOnly detail={`v${m.version} · ${m.name}`} onDeleted={load} />
@@ -259,7 +268,7 @@ export default function ArchiveStyle() {
                         ))}
                       </div>
                     )}
-                    <MediaGrid media={n.media} size="sm" />
+                    <MediaGrid media={n.media} size="sm" onDeleted={load} />
                   </li>
                 ))}
               </ul>
@@ -278,7 +287,7 @@ export default function ArchiveStyle() {
                 {data.files.map((f) => (
                   <li key={f.id} className="flex items-center justify-between gap-2 py-1.5">
                     <button className="min-w-0 truncate text-left hover:underline" onClick={() => openMedia(f)}>{f.name}</button>
-                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">{fmtDate(f.date)}
+                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">{formatBytes(f.size)} · {fmtDate(f.date)}
                       <DeleteButton table="archive_media" id={f.id} what="file ini" iconOnly detail={f.name} onDeleted={load} /></span>
                   </li>
                 ))}

@@ -24,10 +24,10 @@ export const PHOTO_CATEGORIES = [
   { value: "qc", label: "QC" },
 ];
 export const LABEL_ITEMS = [
-  { value: "brand_label", label: "Label merek (brand label)", fields: ["Nama merek", "Jenis (woven/printed/kulit)", "Posisi", "Cara jahit", "Disediakan oleh"], photos: ["Close-up", "Posisi di baju", "Hasil jahitan"] },
-  { value: "care_label", label: "Label perawatan (care label)", fields: ["Isi", "Posisi", "Cara jahit"], photos: ["Close-up", "Posisi", "Hasil jahitan"] },
-  { value: "size_label", label: "Label ukuran (size label)", fields: ["Format", "Posisi", "Cara jahit"], photos: ["Close-up", "Posisi", "Hasil jahitan"] },
-  { value: "hang_tag", label: "Hang tag", fields: ["Isi tag", "Cara pasang", "Posisi"], photos: ["Depan & belakang", "Posisi", "Hasil terpasang"] },
+  { value: "brand_label", label: "Label merek (brand label)", fields: ["Nama merek", "Jenis (woven/printed/kulit)", "Posisi", "Cara jahit", "Disediakan oleh"], photos: ["Close-up", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4", "Hasil jahitan"] },
+  { value: "care_label", label: "Label perawatan (care label)", fields: ["Isi", "Posisi", "Cara jahit"], photos: ["Close-up", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4", "Hasil jahitan"] },
+  { value: "size_label", label: "Label ukuran (size label)", fields: ["Format", "Posisi", "Cara jahit"], photos: ["Close-up", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4", "Hasil jahitan"] },
+  { value: "hang_tag", label: "Hang tag", fields: ["Isi tag", "Cara pasang", "Posisi"], photos: ["Depan & belakang", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4"] },
   { value: "folding", label: "Cara lipat & polybag", fields: ["Cara lipat", "Polybag", "Isi per polybag", "Kertas tisu / silica"], photos: ["Langkah lipat", "Hasil lipat", "Dalam polybag"] },
   { value: "carton", label: "Karton & pengiriman", fields: ["Isi per karton", "Label karton", "Catatan"], photos: ["Isi karton", "Label karton"] },
 ];
@@ -304,6 +304,7 @@ const DELETE_TARGETS = {
   style_entries: "entry_id",
   customer_notes: "note_id",
   customer_pos: "po_id",
+  label_packing: "label_id",
 };
 export async function deleteArchiveRecord(table, id) {
   if (table === "archive_media") return deleteArchiveMedia(id);
@@ -351,4 +352,12 @@ export async function deleteArchiveMedia(id) {
     if (es) console.warn("[archive] file storage tidak terhapus:", es.message);
   }
   return { files: 1 };
+}
+
+// Unlink a machine program from a style (the program file itself stays in the program archive).
+export async function unlinkProgram(styleId, programId) {
+  const { data, error } = await supabase.from("style_programs").delete()
+    .eq("style_id", styleId).eq("program_id", programId).select("program_id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("Tidak terlepas — akun ini belum punya izin hapus di database. Kabari admin.");
 }
