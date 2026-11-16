@@ -28,6 +28,7 @@ export const LABEL_ITEMS = [
   { value: "care_label", label: "Label perawatan (care label)", fields: ["Isi", "Posisi", "Cara jahit"], photos: ["Close-up", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4", "Hasil jahitan"] },
   { value: "size_label", label: "Label ukuran (size label)", fields: ["Format", "Posisi", "Cara jahit"], photos: ["Close-up", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4", "Hasil jahitan"] },
   { value: "hang_tag", label: "Hang tag", fields: ["Isi tag", "Cara pasang", "Posisi"], photos: ["Depan & belakang", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4"] },
+  { value: "accessories", label: "Aksesories & cara pasang", fields: ["Jenis aksesories", "Bahan / warna", "Ukuran", "Jumlah per pcs", "Posisi", "Cara pasang", "Disediakan oleh"], photos: ["Close-up", "Terpasang – posisi 1", "Terpasang – posisi 2", "Terpasang – posisi 3", "Terpasang – posisi 4", "Hasil jahitan"] },
   { value: "folding", label: "Cara lipat & polybag", fields: ["Cara lipat", "Polybag", "Isi per polybag", "Kertas tisu / silica"], photos: ["Langkah lipat", "Hasil lipat", "Dalam polybag"] },
   { value: "carton", label: "Karton & pengiriman", fields: ["Isi per karton", "Label karton", "Catatan"], photos: ["Isi karton", "Label karton"] },
 ];
