@@ -3,6 +3,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/components/ui/use-toast";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 import Login from "@/pages/Login";
 import ResetPassword from "@/pages/ResetPassword";
@@ -33,6 +34,7 @@ import Attention from "@/pages/Attention";
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <ToastProvider>
       <AuthProvider>
         <Routes>
@@ -74,5 +76,6 @@ export default function App() {
         </Routes>
       </AuthProvider>
     </ToastProvider>
+    </ErrorBoundary>
   );
 }

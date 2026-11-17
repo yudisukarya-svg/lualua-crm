@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, FileSpreadsheet, File as FileIcon, Image as ImageIcon, Download, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -21,8 +21,9 @@ export function useThumbUrls(items) {
 }
 
 function fileIcon(m) {
-  if (/pdf/.test(m.mime || "")) return FileText;
-  if (/sheet|excel|csv/.test(m.mime || "") || /\.(xlsx?|csv)$/i.test(m.name || "")) return FileSpreadsheet;
+  // m can be null while the preview dialog is fading out after close — must not crash.
+  if (/pdf/.test(m?.mime || "")) return FileText;
+  if (/sheet|excel|csv/.test(m?.mime || "") || /\.(xlsx?|csv)$/i.test(m?.name || "")) return FileSpreadsheet;
   return FileIcon;
 }
 
@@ -40,13 +41,14 @@ export default function MediaGrid({ media = [], size = "md", className, empty = 
   const [full, setFull] = useState(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const openId = useRef(null); // id of the photo currently shown (guards late URL responses)
 
   async function removeOpen() {
     setDeleting(true);
     try {
       await deleteArchiveMedia(open.id);
       toast({ title: "Terhapus", description: open.name });
-      setOpen(null);
+      openId.current = null; setOpen(null); setFull(null);
       onDeleted?.();
     } catch (e) {
       toast({ variant: "destructive", title: "Gagal menghapus", description: e.message });
@@ -54,9 +56,10 @@ export default function MediaGrid({ media = [], size = "md", className, empty = 
   }
 
   async function show(m) {
+    openId.current = m.id;
     setOpen(m); setFull(null); setConfirmDel(false);
     const u = await getSignedUrls([m.path]);
-    setFull(u[m.path] ?? null);
+    if (openId.current === m.id) setFull(u[m.path] ?? null);
   }
 
   if (!media.length) return empty;
@@ -89,7 +92,7 @@ export default function MediaGrid({ media = [], size = "md", className, empty = 
           );
         })}
       </div>
-      <Dialog open={!!open} onOpenChange={(v) => !v && !deleting && setOpen(null)}>
+      <Dialog open={!!open} onOpenChange={(v) => { if (!v && !deleting) { openId.current = null; setOpen(null); setFull(null); setConfirmDel(false); } }}>
         <DialogContent className="max-w-4xl">
           <DialogTitle className="pr-6 text-base">{open?.caption || open?.name}</DialogTitle>
           <div className="flex min-h-[200px] items-center justify-center rounded-md bg-muted">
