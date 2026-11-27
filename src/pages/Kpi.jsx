@@ -164,7 +164,8 @@ export default function Kpi() {
   if (!rows) return <>{header}{monthBar}<p className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Menghitung KPI…</p></>;
   if (!rows.length) return <>{header}<EmptyState title="Tidak ada KPI untuk akun ini" description="KPI hanya tersedia untuk karyawan yang terdaftar di sistem bonus." /></>;
 
-  const shown = isOwner ? selected : summary[0]?.karyawan;
+  const multi = summary.length > 1;
+  const shown = selected ?? summary[0]?.karyawan;
   const list = byKaryawan[shown] ?? [];
 
   return (
@@ -173,13 +174,13 @@ export default function Kpi() {
       {monthBar}
 
       {/* Summary cards */}
-      <div className={cn("mb-5 grid gap-3", isOwner ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:max-w-sm")}>
+      <div className={cn("mb-5 grid gap-3", multi ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 sm:max-w-sm")}>
         {summary.map((s) => {
           const active = s.karyawan === shown;
           return (
             <Card key={s.karyawan}
-              onClick={() => isOwner && setSelected(s.karyawan)}
-              className={cn("p-4 transition-colors", isOwner && "cursor-pointer", active && isOwner ? "border-primary ring-1 ring-primary" : isOwner && "hover:bg-muted/40")}>
+              onClick={() => multi && setSelected(s.karyawan)}
+              className={cn("p-4 transition-colors", multi && "cursor-pointer", active && multi ? "border-primary ring-1 ring-primary" : multi && "hover:bg-muted/40")}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold">{s.karyawan}</p>
