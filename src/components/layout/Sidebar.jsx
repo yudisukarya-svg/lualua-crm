@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, BarChart3, X,
-  ClipboardList, Gauge, Shapes, Factory, CalendarDays, UsersRound, Cpu, Boxes, LayoutGrid, CloudDownload, CalendarCheck, FolderArchive, History, BellRing,
+  ClipboardList, Gauge, Shapes, Factory, CalendarDays, UsersRound, Cpu, Boxes, LayoutGrid, CloudDownload, CalendarCheck, FolderArchive, History, BellRing, Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logoUrl from "@/assets/logo.png";
@@ -9,6 +9,7 @@ import logoUrl from "@/assets/logo.png";
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/perhatian", label: "Perlu Perhatian", icon: BellRing },
+  { to: "/kpi", label: "KPI & Bonus", icon: Trophy },
   { to: "/customers", label: "Customers", icon: Users },
   { to: "/archive", label: "Arsip Customer", icon: FolderArchive },
   { to: "/timeline", label: "Timeline SO", icon: History },
